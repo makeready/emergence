@@ -1,4 +1,12 @@
 import { CONFIG, validateConfig } from "./config.js";
+import { readAgentFile } from "./lib/files.js";
+import {
+  resetCycleUsage,
+  getCycleUsage,
+  snapshotUsage,
+  diffUsage,
+  type CycleUsage,
+} from "./lib/anthropic.js";
 import { wakeUp } from "./skills/wake-up.js";
 import { ingest } from "./skills/ingest.js";
 import { ruminate } from "./skills/ruminate.js";
@@ -33,6 +41,9 @@ async function main(): Promise<void> {
   console.log(`Model: ${CONFIG.anthropic.model}\n`);
 
   validateConfig();
+  resetCycleUsage();
+
+  const skillStats: { name: string; usage: CycleUsage; elapsed: number }[] = [];
 
   for (const skill of skills) {
     if (skill.skipIf?.()) {
@@ -41,19 +52,43 @@ async function main(): Promise<void> {
     }
 
     const start = Date.now();
+    const before = snapshotUsage();
     try {
       await skill.run();
-      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-      console.log(`[${skill.name}] Done (${elapsed}s)\n`);
+      const elapsed = (Date.now() - start) / 1000;
+      const usage = diffUsage(before, getCycleUsage());
+      skillStats.push({ name: skill.name, usage, elapsed });
+
+      const mindset = await readAgentFile("mindset.md");
+      console.log(`[${skill.name}] Done (${elapsed.toFixed(1)}s)`);
+      console.log(`--- mindset ---\n${mindset.trim()}\n---\n`);
     } catch (err) {
-      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-      console.error(`[${skill.name}] FAILED after ${elapsed}s:`, err);
-      // Continue with remaining skills — partial cycles are better than no cycle
+      const elapsed = (Date.now() - start) / 1000;
+      const usage = diffUsage(before, getCycleUsage());
+      skillStats.push({ name: skill.name, usage, elapsed });
+      console.error(`[${skill.name}] FAILED after ${elapsed.toFixed(1)}s:`, err);
     }
   }
 
-  const totalElapsed = ((Date.now() - cycleStart) / 1000).toFixed(1);
-  console.log(`=== Cycle complete (${totalElapsed}s) ===\n`);
+  // Print usage summary
+  const total = getCycleUsage();
+  const totalElapsed = (Date.now() - cycleStart) / 1000;
+
+  console.log("=== Usage Summary ===");
+  console.log(
+    `${"Skill".padEnd(14)} ${"Input".padStart(8)} ${"Output".padStart(8)} ${"Cost".padStart(9)} ${"Time".padStart(7)}`,
+  );
+  console.log("-".repeat(50));
+  for (const s of skillStats) {
+    console.log(
+      `${s.name.padEnd(14)} ${String(s.usage.inputTokens).padStart(8)} ${String(s.usage.outputTokens).padStart(8)} ${("$" + s.usage.cost.toFixed(4)).padStart(9)} ${(s.elapsed.toFixed(1) + "s").padStart(7)}`,
+    );
+  }
+  console.log("-".repeat(50));
+  console.log(
+    `${"TOTAL".padEnd(14)} ${String(total.inputTokens).padStart(8)} ${String(total.outputTokens).padStart(8)} ${("$" + total.cost.toFixed(4)).padStart(9)} ${(totalElapsed.toFixed(1) + "s").padStart(7)}`,
+  );
+  console.log();
 }
 
 main().catch((err) => {

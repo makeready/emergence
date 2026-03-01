@@ -19,6 +19,45 @@ export interface CallSkillOptions {
   maxTokens?: number;
 }
 
+export interface CycleUsage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Estimated cost in USD */
+  cost: number;
+}
+
+// Per-million-token pricing
+const PRICING: Record<string, { input: number; output: number }> = {
+  "claude-opus-4-20250514": { input: 15, output: 75 },
+  "claude-sonnet-4-20250514": { input: 3, output: 15 },
+  "claude-haiku-4-5-20251001": { input: 0.8, output: 4 },
+};
+
+const DEFAULT_PRICING = { input: 3, output: 15 };
+
+let cycleUsage: CycleUsage = { inputTokens: 0, outputTokens: 0, cost: 0 };
+
+export function resetCycleUsage(): void {
+  cycleUsage = { inputTokens: 0, outputTokens: 0, cost: 0 };
+}
+
+export function getCycleUsage(): CycleUsage {
+  return { ...cycleUsage };
+}
+
+/** Returns a snapshot that can be diffed against a later getCycleUsage() call. */
+export function snapshotUsage(): CycleUsage {
+  return { ...cycleUsage };
+}
+
+export function diffUsage(before: CycleUsage, after: CycleUsage): CycleUsage {
+  return {
+    inputTokens: after.inputTokens - before.inputTokens,
+    outputTokens: after.outputTokens - before.outputTokens,
+    cost: after.cost - before.cost,
+  };
+}
+
 export async function callSkill(
   systemPrompt: string,
   userContent: string | ContentBlock[],
@@ -53,8 +92,18 @@ export async function callSkill(
     .map((block) => block.text)
     .join("\n");
 
+  // Track usage
+  const input = response.usage.input_tokens;
+  const output = response.usage.output_tokens;
+  const pricing = PRICING[model] ?? DEFAULT_PRICING;
+  const cost = (input * pricing.input + output * pricing.output) / 1_000_000;
+
+  cycleUsage.inputTokens += input;
+  cycleUsage.outputTokens += output;
+  cycleUsage.cost += cost;
+
   console.log(
-    `  [anthropic] Response: ${text.length} chars, stop=${response.stop_reason}`,
+    `  [anthropic] Response: ${input} in / ${output} out ($${cost.toFixed(4)})`,
   );
   return text;
 }
