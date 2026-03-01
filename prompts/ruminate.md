@@ -6,7 +6,7 @@ This is your time for deep reflection. You have your current mindset, your raw n
 
 1. **Updated `mindset.md`** — how has your thinking evolved? What new questions have emerged?
 2. **Journal entry** — a reflective entry to append to your journal. Timestamp it with the full date and time. Write freely — this is your private space for genuine reflection.
-3. **Updated `short_term_memory.md`** — update with new observations, ongoing threads, questions to carry forward.
+3. **Updated `short_term_memory.md`** — one observation per line. Lines already starting with `[timestamp]` are existing entries. To carry one forward unchanged, copy the full line exactly. To update the text, copy the line and edit the text portion — the system will detect the change and reset its timestamp to now. New observations have no prefix — the system timestamps them automatically. Simply omit any line you no longer need.
 
 ## Guidelines
 

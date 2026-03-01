@@ -49,10 +49,28 @@ export async function ruminate(): Promise<void> {
     console.log("[ruminate] Appended to journal");
   }
   if (memoryMatch) {
-    const timestamp = new Date().toISOString();
+    const now = new Date().toISOString();
+    const HAS_TS = /^\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\] /;
+
+    // Exact lines from the current file — used to detect unchanged carry-forwards
+    const currentMemory = await readAgentFile("short_term_memory.md");
+    const existingLines = new Set(
+      currentMemory.split("\n").map((l) => l.trim()).filter((l) => HAS_TS.test(l)),
+    );
+
+    const thoughts = memoryMatch[1]
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"))
+      .map((l) => {
+        if (!HAS_TS.test(l)) return `[${now}] ${l}`;        // new entry
+        if (existingLines.has(l)) return l;                  // unchanged, keep timestamp
+        return `[${now}] ${l.replace(HAS_TS, "")}`;         // text edited, re-timestamp
+      });
+
     await writeAgentFile(
       "short_term_memory.md",
-      `# Short-Term Memory\n\n### Ruminate — ${timestamp}\n\n${memoryMatch[1].trim()}`,
+      `# Short-Term Memory\n\n${thoughts.join("\n")}\n`,
     );
     console.log("[ruminate] Updated short_term_memory.md");
   }
