@@ -52,17 +52,15 @@ export async function iterate(): Promise<void> {
   for (const change of changes) {
     let desc: string;
     switch (change.change) {
-      case "bio":
-        desc = `Bio update: "${change.text}" — ${change.reason}`;
+      case "profile":
+        desc = `Profile update: "${change.text}" — ${change.reason}`;
         break;
-      case "displayName":
-        desc = `Display name update: "${change.text}" — ${change.reason}`;
+      case "identity":
+        desc = `Identity change (${change.section}): ${change.reason}`;
         break;
-      case "avatar":
-        desc = `Avatar update: "${change.prompt}" — ${change.reason}`;
+      case "prompt":
+        desc = `Prompt change (${change.skill}): ${change.reason}`;
         break;
-      default:
-        desc = `${change.change} change (${(change as { section?: string; skill?: string }).section || (change as { skill?: string }).skill}): ${change.reason}`;
     }
     changeLog.push(desc);
   }

@@ -23,9 +23,7 @@ export type CommunicateAction =
 export type IterateChange =
   | { change: "identity"; section: string; proposal: string; reason: string }
   | { change: "prompt"; skill: string; proposal: string; reason: string }
-  | { change: "bio"; text: string; reason: string }
-  | { change: "displayName"; text: string; reason: string }
-  | { change: "avatar"; prompt: string; reason: string };
+  | { change: "profile"; text: string; reason: string };
 
 export interface SkillContext {
   /** The skill's system prompt (loaded from prompts/) */
