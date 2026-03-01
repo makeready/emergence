@@ -64,12 +64,21 @@ async function executeAction(action: CommunicateAction): Promise<string> {
       return `Posted: "${action.text}"${link}`;
     }
     case "reply": {
+      const rootUri = action.rootUri ?? action.postUri;
+      const rootCid = action.rootCid ?? action.postCid;
+      if (!CONFIG.allowReplyToNonFollowers) {
+        const authorDid = extractDid(action.postUri);
+        const followed = await bluesky.isFollowedBy(authorDid);
+        if (!followed) {
+          return `Skipped reply to [post](${atUriToWebUrl(action.postUri)}) — author does not follow us`;
+        }
+      }
       const result = await bluesky.reply(
         action.text,
         action.postUri,
         action.postCid,
-        action.rootUri,
-        action.rootCid,
+        rootUri,
+        rootCid,
       );
       const targetLink = `[post](${atUriToWebUrl(action.postUri)})`;
       const replyLink = result.uri !== "dry-run" ? ` ([view reply](${atUriToWebUrl(result.uri)}))` : "";

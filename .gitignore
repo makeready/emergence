@@ -4,5 +4,6 @@ dist/
 
 # Agent runtime state (keep templates, ignore live state)
 agent/*.md
+agent/journal/
 agent/journal/*.md
 !agent/.gitkeep

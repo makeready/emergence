@@ -324,6 +324,16 @@ export async function deleteRepost(repostUri: string): Promise<void> {
 // Writing — DMs
 // ---------------------------------------------------------------------------
 
+export async function isFollowedBy(did: string): Promise<boolean> {
+  const bsky = await login();
+  try {
+    const response = await bsky.getProfile({ actor: did });
+    return !!response.data.viewer?.followedBy;
+  } catch {
+    return false;
+  }
+}
+
 export async function sendDM(did: string, text: string): Promise<void> {
   if (CONFIG.dryRun) {
     console.log(

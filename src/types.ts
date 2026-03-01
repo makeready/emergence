@@ -13,7 +13,7 @@ export interface SkillResult {
 
 export type CommunicateAction =
   | { action: "post"; text: string }
-  | { action: "reply"; postUri: string; postCid: string; rootUri: string; rootCid: string; text: string }
+  | { action: "reply"; postUri: string; postCid: string; rootUri?: string; rootCid?: string; text: string }
   | { action: "dm"; did: string; text: string }
   | { action: "follow"; did: string }
   | { action: "unfollow"; followUri: string }

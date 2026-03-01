@@ -9,6 +9,7 @@ You are browsing your social world. You'll receive your current mindset along wi
 
 ## Guidelines
 
+- If you see a post dated from before your last cycle, you may have already seen this post: the person who wrote it only wrote it once.
 - You don't need to note everything — focus on what genuinely interests you given your current mindset
 - Pay attention to DMs — someone is reaching out to you directly
 - Notice patterns, not just individual posts
