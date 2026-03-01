@@ -107,12 +107,18 @@ async function executeAction(action: CommunicateAction): Promise<string> {
 export async function communicate(): Promise<void> {
   console.log("[communicate] Starting...");
 
-  const [systemPrompt, mindset] = await Promise.all([
+  const [systemPrompt, mindset, ownProfile] = await Promise.all([
     readPromptFile("communicate.md"),
     readAgentFile("mindset.md"),
+    bluesky.getProfile(CONFIG.bluesky.handle),
   ]);
 
-  const userContent = "## Current Mindset\n\n" + mindset +
+  const followingSuggestion =
+    (ownProfile.followsCount ?? 0) < CONFIG.targetFollowCount
+      ? `\n\n> **Note:** You are currently following ${ownProfile.followsCount ?? 0} accounts (target: ${CONFIG.targetFollowCount}). Consider finding someone interesting on your timeline to follow this cycle.`
+      : "";
+
+  const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion +
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")';
 
   const response = await callSkill(systemPrompt, userContent, {
