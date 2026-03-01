@@ -75,6 +75,8 @@ export interface BlueskyNotification {
   reason: string; // 'reply' | 'mention' | 'follow' | 'like' | 'repost'
   text?: string;
   createdAt: string;
+  /** URI of the agent's own post that was liked, reposted, or replied to */
+  subjectUri?: string;
 }
 
 export interface BlueskyProfile {

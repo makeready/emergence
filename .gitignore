@@ -9,3 +9,5 @@ agent/journal/
 agent/journal/*.md
 agent/.DS_Store
 !agent/.gitkeep
+agent/people/
+agent/ingest_dids.json

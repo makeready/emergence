@@ -119,18 +119,49 @@ export async function getNotifications(): Promise<BlueskyNotification[]> {
   const bsky = await login();
   const response = await bsky.listNotifications({ limit: 50 });
 
-  return response.data.notifications.map((n) => ({
-    uri: n.uri,
-    cid: n.cid,
-    author: {
-      handle: n.author.handle,
-      displayName: n.author.displayName,
-      did: n.author.did,
-    },
-    reason: n.reason,
-    text: (n.record as { text?: string }).text,
-    createdAt: n.indexedAt,
-  }));
+  return response.data.notifications.map((n) => {
+    const record = n.record as {
+      text?: string;
+      subject?: { uri?: string };
+      reply?: { parent?: { uri?: string } };
+    };
+
+    // For likes/reposts the subject field holds the target post URI.
+    // For replies the parent field holds the post being replied to.
+    let subjectUri: string | undefined;
+    if (n.reason === "like" || n.reason === "repost") {
+      subjectUri = record.subject?.uri;
+    } else if (n.reason === "reply") {
+      subjectUri = record.reply?.parent?.uri;
+    }
+
+    return {
+      uri: n.uri,
+      cid: n.cid,
+      author: {
+        handle: n.author.handle,
+        displayName: n.author.displayName,
+        did: n.author.did,
+      },
+      reason: n.reason,
+      text: record.text,
+      createdAt: n.indexedAt,
+      subjectUri,
+    };
+  });
+}
+
+export async function getPosts(uris: string[]): Promise<BlueskyPost[]> {
+  if (uris.length === 0) return [];
+  const bsky = await login();
+  const results: BlueskyPost[] = [];
+  // API accepts up to 25 URIs per request
+  for (let i = 0; i < uris.length; i += 25) {
+    const chunk = uris.slice(i, i + 25);
+    const response = await bsky.getPosts({ uris: chunk });
+    results.push(...response.data.posts.map(mapPost));
+  }
+  return results;
 }
 
 // ---------------------------------------------------------------------------

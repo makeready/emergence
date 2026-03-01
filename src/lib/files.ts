@@ -2,6 +2,84 @@ import { readFile as fsRead, writeFile as fsWrite, mkdir, readdir } from "fs/pro
 import { join, dirname } from "path";
 import { CONFIG } from "../config.js";
 
+// ── People files ──────────────────────────────────────────────────────────────
+
+function didToFilename(did: string): string {
+  return did.replace(/:/g, "_") + ".md";
+}
+
+export async function readPeopleFile(did: string): Promise<string> {
+  try {
+    return await fsRead(join(CONFIG.paths.agent, "people", didToFilename(did)), "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+export async function writePeopleFile(did: string, content: string): Promise<void> {
+  const path = join(CONFIG.paths.agent, "people", didToFilename(did));
+  await mkdir(dirname(path), { recursive: true });
+  await fsWrite(path, content, "utf-8");
+}
+
+export async function readAllPeopleFiles(): Promise<Record<string, string>> {
+  const dir = join(CONFIG.paths.agent, "people");
+  let files: string[];
+  try {
+    files = (await readdir(dir)).filter((f) => f.endsWith(".md"));
+  } catch {
+    return {};
+  }
+  const result: Record<string, string> = {};
+  await Promise.all(
+    files.map(async (filename) => {
+      // Reverse didToFilename: "did_plc_abc123.md" → "did:plc:abc123"
+      const base = filename.slice(0, -3);
+      const parts = base.split("_");
+      if (parts.length < 3 || parts[0] !== "did") return;
+      const did = `${parts[0]}:${parts[1]}:${parts.slice(2).join("_")}`;
+      const content = await readPeopleFile(did);
+      if (content) result[did] = content;
+    }),
+  );
+  return result;
+}
+
+export async function readPeopleFiles(dids: string[]): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  await Promise.all(
+    dids.map(async (did) => {
+      const content = await readPeopleFile(did);
+      if (content) result[did] = content;
+    }),
+  );
+  return result;
+}
+
+/**
+ * Parses a `## People Updates` section from model output.
+ * Each `### did:xxx (@handle)` subheading introduces a person's file content.
+ * Returns a map of DID → full new file content.
+ */
+export function parsePeopleUpdates(text: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const sectionMatch = text.match(/## People Updates\n([\s\S]*?)(?=\n## |\n*$)/);
+  if (!sectionMatch) return result;
+
+  const parts = sectionMatch[1].split(/^(?=### )/m);
+  for (const part of parts) {
+    if (!part.startsWith("### ")) continue;
+    const didMatch = part.match(/did:[^\s)]+/);
+    if (!didMatch) continue;
+    const did = didMatch[0];
+    const firstNewline = part.indexOf("\n");
+    if (firstNewline === -1) continue;
+    const content = part.slice(firstNewline + 1).trim();
+    if (content) result[did] = content;
+  }
+  return result;
+}
+
 function agentPath(name: string): string {
   return join(CONFIG.paths.agent, name);
 }

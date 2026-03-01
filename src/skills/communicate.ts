@@ -1,4 +1,4 @@
-import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readPeopleFiles, writePeopleFile, parsePeopleUpdates } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
 import * as bluesky from "../lib/bluesky.js";
 import type { CommunicateAction, BlueskyProfile } from "../types.js";
@@ -115,11 +115,12 @@ function formatFollowerProfile(p: BlueskyProfile): string {
 export async function communicate(): Promise<void> {
   console.log("[communicate] Starting...");
 
-  const [systemPrompt, mindset, ownProfile, notifications] = await Promise.all([
+  const [systemPrompt, mindset, ownProfile, notifications, ingestDidsRaw] = await Promise.all([
     readPromptFile("communicate.md"),
     readAgentFile("mindset.md"),
     bluesky.getProfile(CONFIG.bluesky.handle),
     bluesky.getNotifications(),
+    readAgentFile("ingest_dids.json"),
   ]);
 
   // Find accounts that followed us but we haven't followed back
@@ -127,6 +128,19 @@ export async function communicate(): Promise<void> {
     notifications.filter((n) => n.reason === "follow").map((n) => n.author.did),
   )];
   const unfollowedFollowers = await bluesky.getUnfollowedFollowers(followerDids);
+
+  // Load people files for all known DIDs this cycle
+  let ingestDids: string[] = [];
+  try { ingestDids = JSON.parse(ingestDidsRaw); } catch { /* ignore */ }
+  const notifDids = notifications.map((n) => n.author.did);
+  const newFollowerDids = unfollowedFollowers.map((p) => p.did);
+  const allPeopleDids = [...new Set([...ingestDids, ...notifDids, ...newFollowerDids])];
+  const peopleFiles = await readPeopleFiles(allPeopleDids);
+  const peopleEntries = Object.entries(peopleFiles);
+  const peopleSection = peopleEntries.length > 0
+    ? "\n\n## People Context\n\nYou have notes on these accounts:\n\n" +
+      peopleEntries.map(([did, content]) => `### ${did}\n\n${content}`).join("\n\n")
+    : "";
 
   const followingSuggestion =
     (ownProfile.followsCount ?? 0) < CONFIG.targetFollowCount
@@ -137,8 +151,8 @@ export async function communicate(): Promise<void> {
     ? `\n\n## New Followers to Evaluate\n\nThese accounts recently followed you and you haven't followed back. Review each and decide whether to follow them.\n\n${unfollowedFollowers.map(formatFollowerProfile).join("\n\n")}`
     : "";
 
-  const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion + newFollowersSection +
-    '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")';
+  const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion + newFollowersSection + peopleSection +
+    '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")\n\nOptionally add a third section:\n\n## People Updates\n(if you have new thoughts about specific people, record them here)';
 
   const response = await callSkill(systemPrompt, userContent, {
     model: CONFIG.anthropic.modelDeep,
@@ -175,6 +189,13 @@ export async function communicate(): Promise<void> {
   if (mindsetMatch) {
     await writeAgentFile("mindset.md", mindsetMatch[1].trim());
     console.log("[communicate] Updated mindset.md");
+  }
+
+  // Write any people updates the model produced
+  const peopleUpdates = parsePeopleUpdates(response);
+  for (const [did, content] of Object.entries(peopleUpdates)) {
+    await writePeopleFile(did, content);
+    console.log(`[communicate] Updated people file for ${did}`);
   }
 
   console.log(`[communicate] ${actions.length} actions processed`);

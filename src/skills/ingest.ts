@@ -1,6 +1,6 @@
 import { readAgentFile, writeAgentFile, readPromptFile } from "../lib/files.js";
 import { callSkill, type ContentBlock } from "../lib/anthropic.js";
-import { getTimeline, getDMs, getNotifications, getProfile } from "../lib/bluesky.js";
+import { getTimeline, getDMs, getNotifications, getProfile, getPosts } from "../lib/bluesky.js";
 import { CONFIG } from "../config.js";
 import type { BlueskyPost, BlueskyDM, BlueskyNotification, BlueskyProfile } from "../types.js";
 
@@ -18,7 +18,7 @@ function formatPost(p: BlueskyPost): string {
       ? `\n[${p.images.length} image(s)${p.images.some((i) => i.alt) ? ": " + p.images.map((i) => i.alt).filter(Boolean).join("; ") : ""}]`
       : "";
   const videoNote = p.videoAlt ? `\n[video: ${p.videoAlt}]` : "";
-  return `**@${p.author.handle}** (${p.author.displayName || ""})\n${p.text}${imageNote}${videoNote}\n_${p.createdAt}_ | replies: ${p.replyCount ?? 0} | likes: ${p.likeCount ?? 0}\nuri: ${p.uri} cid: ${p.cid}`;
+  return `**@${p.author.handle}** (${p.author.displayName || ""}) [${p.author.did}]\n${p.text}${imageNote}${videoNote}\n_${p.createdAt}_ | replies: ${p.replyCount ?? 0} | likes: ${p.likeCount ?? 0}\nuri: ${p.uri} cid: ${p.cid}`;
 }
 
 function formatPosts(posts: BlueskyPost[]): string {
@@ -35,13 +35,22 @@ function formatDMs(dms: BlueskyDM[]): string {
     .join("\n\n---\n\n");
 }
 
-function formatNotifications(notifs: BlueskyNotification[]): string {
+function formatNotifications(notifs: BlueskyNotification[], subjectPosts: Map<string, BlueskyPost>): string {
   if (notifs.length === 0) return "_No new notifications._";
   return notifs
-    .map(
-      (n) =>
-        `**${n.reason}** from @${n.author.handle}: ${n.text || "(no text)"}\n_${n.createdAt}_\nuri: ${n.uri} cid: ${n.cid}`,
-    )
+    .map((n) => {
+      const subject = n.subjectUri ? subjectPosts.get(n.subjectUri) : undefined;
+      const subjectLine = subject ? `\n↳ Your post: "${subject.text}"` : "";
+      const replyLine = n.text ? `\n↳ Reply: "${n.text}"` : "";
+
+      if (n.reason === "reply") {
+        return `**reply** from @${n.author.handle} [${n.author.did}]${subject ? `\n↳ To your post: "${subject.text}"` : ""}${n.text ? `\n↳ Reply: "${n.text}"` : ""}\n_${n.createdAt}_\nuri: ${n.uri} cid: ${n.cid}`;
+      }
+      if (n.reason === "like" || n.reason === "repost") {
+        return `**${n.reason}** from @${n.author.handle} [${n.author.did}]${subjectLine}\n_${n.createdAt}_`;
+      }
+      return `**${n.reason}** from @${n.author.handle} [${n.author.did}]${replyLine}\n_${n.createdAt}_\nuri: ${n.uri} cid: ${n.cid}`;
+    })
     .join("\n\n---\n\n");
 }
 
@@ -154,6 +163,16 @@ export async function ingest(): Promise<void> {
   console.log(
     `[ingest] Got ${timeline.length} posts (${imageCount} images), ${notifications.length} notifications, ${dms.length} DMs`,
   );
+
+  // Collect all unique DIDs seen this cycle for people file lookup
+  const ingestDids = [
+    ...new Set([
+      ...timeline.map((p) => p.author.did),
+      ...notifications.map((n) => n.author.did),
+      ...dms.map((d) => d.sender.did),
+    ]),
+  ];
+  await writeAgentFile("ingest_dids.json", JSON.stringify(ingestDids));
 
   const textContent = [
     "## Current Mindset\n\n" + mindset,
