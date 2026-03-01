@@ -1,4 +1,4 @@
-import { readAgentFile, writeAgentFile, truncateFile } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, truncateByAge } from "../lib/files.js";
 import { CONFIG } from "../config.js";
 
 export async function sleep(): Promise<void> {
@@ -13,8 +13,8 @@ export async function sleep(): Promise<void> {
   await writeAgentFile("short_term_memory.md", shortTermMemory + archived);
   console.log("[sleep] Archived mindset to short_term_memory.md");
 
-  // Truncate short-term memory
-  await truncateFile(
+  // Truncate short-term memory, removing oldest sections first
+  await truncateByAge(
     "short_term_memory.md",
     CONFIG.maxShortTermMemoryLines,
   );

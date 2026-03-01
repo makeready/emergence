@@ -53,9 +53,10 @@ export async function ruminate(): Promise<void> {
     console.log("[ruminate] Appended to journal.md");
   }
   if (memoryMatch) {
+    const timestamp = new Date().toISOString();
     await writeAgentFile(
       "short_term_memory.md",
-      "# Short-Term Memory\n\n" + memoryMatch[1].trim(),
+      `# Short-Term Memory\n\n### Ruminate — ${timestamp}\n\n${memoryMatch[1].trim()}`,
     );
     console.log("[ruminate] Updated short_term_memory.md");
   }
