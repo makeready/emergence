@@ -1,0 +1,20 @@
+{
+  "name": "emergence",
+  "version": "0.1.0",
+  "description": "Persistent autonomous agent with Bluesky integration",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@atproto/api": "^0.13.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

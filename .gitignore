@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+
+# Agent runtime state (keep templates, ignore live state)
+agent/*.md
+!agent/.gitkeep
