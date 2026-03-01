@@ -1,7 +1,16 @@
 import { readAgentFile, writeAgentFile, readPromptFile } from "../lib/files.js";
 import { callSkill, type ContentBlock } from "../lib/anthropic.js";
-import { getTimeline, getDMs, getNotifications } from "../lib/bluesky.js";
-import type { BlueskyPost, BlueskyDM, BlueskyNotification } from "../types.js";
+import { getTimeline, getDMs, getNotifications, getProfile } from "../lib/bluesky.js";
+import { CONFIG } from "../config.js";
+import type { BlueskyPost, BlueskyDM, BlueskyNotification, BlueskyProfile } from "../types.js";
+
+function formatProfile(p: BlueskyProfile): string {
+  return [
+    `**@${p.handle}**${p.displayName ? ` (${p.displayName})` : ""}`,
+    p.description ? `Bio: ${p.description}` : "Bio: _(none)_",
+    `Followers: ${p.followersCount ?? 0} | Following: ${p.followsCount ?? 0} | Posts: ${p.postsCount ?? 0}`,
+  ].join("\n");
+}
 
 function formatPost(p: BlueskyPost): string {
   const imageNote =
@@ -40,8 +49,17 @@ function formatNotifications(notifs: BlueskyNotification[]): string {
 function buildContentBlocks(
   textContent: string,
   posts: BlueskyPost[],
+  avatarUrl?: string,
 ): ContentBlock[] {
   const blocks: ContentBlock[] = [{ type: "text", text: textContent }];
+
+  // Include own avatar if available
+  if (avatarUrl) {
+    blocks.push(
+      { type: "text", text: "\n\n## Your Profile Picture\n\nThis is your current avatar:" },
+      { type: "image", source: { type: "url", url: avatarUrl } },
+    );
+  }
 
   // Collect all posts with images, tagging each image with its post context
   const postsWithImages = posts.filter(
@@ -120,12 +138,13 @@ export async function ingest(): Promise<void> {
     readAgentFile("mindset.md"),
   ]);
 
-  // Fetch social data
-  console.log("[ingest] Fetching timeline, notifications, and DMs...");
-  const [timeline, notifications, dms] = await Promise.all([
+  // Fetch social data + own profile
+  console.log("[ingest] Fetching timeline, notifications, DMs, and own profile...");
+  const [timeline, notifications, dms, ownProfile] = await Promise.all([
     getTimeline(),
     getNotifications(),
     getDMs(),
+    getProfile(CONFIG.bluesky.handle),
   ]);
 
   const imageCount = timeline.reduce(
@@ -138,6 +157,7 @@ export async function ingest(): Promise<void> {
 
   const textContent = [
     "## Current Mindset\n\n" + mindset,
+    "## Your Profile\n\n" + formatProfile(ownProfile),
     "## Timeline\n\n" + formatPosts(timeline),
     "## Notifications\n\n" + formatNotifications(notifications),
     "## Direct Messages\n\n" + formatDMs(dms),
@@ -145,10 +165,10 @@ export async function ingest(): Promise<void> {
   ].join("\n\n---\n\n");
 
   // First pass: thumbnails
-  const content =
-    imageCount > 0
-      ? buildContentBlocks(textContent, timeline)
-      : textContent;
+  const hasImages = imageCount > 0 || ownProfile.avatar;
+  const content = hasImages
+    ? buildContentBlocks(textContent, timeline, ownProfile.avatar)
+    : textContent;
 
   let response = await callSkill(systemPrompt, content);
 

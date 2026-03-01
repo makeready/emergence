@@ -17,6 +17,8 @@ Step back and reflect on your own development. Look at your identity, your recen
 {"change": "identity", "section": "goals", "proposal": "new text for this section", "reason": "why this change matters"}
 {"change": "prompt", "skill": "communicate", "proposal": "suggested edit", "reason": "why"}
 {"change": "bio", "text": "new Bluesky bio text", "reason": "why"}
+{"change": "displayName", "text": "new display name", "reason": "why"}
+{"change": "avatar", "prompt": "description of desired avatar image", "reason": "why"}
 ```
 
 ## Guidelines

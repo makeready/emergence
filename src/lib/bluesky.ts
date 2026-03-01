@@ -371,20 +371,44 @@ export async function unfollow(followUri: string): Promise<void> {
 // Writing — profile
 // ---------------------------------------------------------------------------
 
-export async function updateProfile(description: string): Promise<void> {
+export async function updateProfile(fields: {
+  description?: string;
+  displayName?: string;
+}): Promise<void> {
   if (CONFIG.dryRun) {
-    console.log(
-      `  [bluesky] DRY RUN — would update bio: "${description.slice(0, 80)}..."`,
-    );
+    const changes = Object.entries(fields)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => `${k}: "${String(v).slice(0, 60)}"`)
+      .join(", ");
+    console.log(`  [bluesky] DRY RUN — would update profile: ${changes}`);
     return;
   }
 
   const bsky = await login();
   await bsky.upsertProfile((existing) => ({
     ...existing,
-    description,
+    ...(fields.description !== undefined && { description: fields.description }),
+    ...(fields.displayName !== undefined && { displayName: fields.displayName }),
   }));
-  console.log(`  [bluesky] Updated profile bio`);
+  console.log(`  [bluesky] Updated profile`);
+}
+
+export async function updateAvatar(
+  imageData: Uint8Array,
+  mimeType: "image/png" | "image/jpeg",
+): Promise<void> {
+  if (CONFIG.dryRun) {
+    console.log(`  [bluesky] DRY RUN — would update avatar (${imageData.length} bytes, ${mimeType})`);
+    return;
+  }
+
+  const bsky = await login();
+  const blob = await bsky.uploadBlob(imageData, { encoding: mimeType });
+  await bsky.upsertProfile((existing) => ({
+    ...existing,
+    avatar: blob.data.blob,
+  }));
+  console.log(`  [bluesky] Updated avatar`);
 }
 
 export async function updateHandle(handle: string): Promise<void> {

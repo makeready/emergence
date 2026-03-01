@@ -50,11 +50,20 @@ export async function iterate(): Promise<void> {
   const changeLog: string[] = [];
 
   for (const change of changes) {
-    // In dry-run mode (or always for now), just log
-    const desc =
-      change.change === "bio"
-        ? `Bio update: "${change.text}" — ${change.reason}`
-        : `${change.change} change (${(change as { section?: string; skill?: string }).section || (change as { skill?: string }).skill}): ${change.reason}`;
+    let desc: string;
+    switch (change.change) {
+      case "bio":
+        desc = `Bio update: "${change.text}" — ${change.reason}`;
+        break;
+      case "displayName":
+        desc = `Display name update: "${change.text}" — ${change.reason}`;
+        break;
+      case "avatar":
+        desc = `Avatar update: "${change.prompt}" — ${change.reason}`;
+        break;
+      default:
+        desc = `${change.change} change (${(change as { section?: string; skill?: string }).section || (change as { skill?: string }).skill}): ${change.reason}`;
+    }
     changeLog.push(desc);
   }
 
