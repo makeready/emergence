@@ -1,7 +1,7 @@
 import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
 import * as bluesky from "../lib/bluesky.js";
-import type { CommunicateAction } from "../types.js";
+import type { CommunicateAction, BlueskyProfile } from "../types.js";
 import { CONFIG } from "../config.js";
 
 function atUriToWebUrl(uri: string): string {
@@ -104,21 +104,40 @@ async function executeAction(action: CommunicateAction): Promise<string> {
   }
 }
 
+function formatFollowerProfile(p: BlueskyProfile): string {
+  return [
+    `**@${p.handle}**${p.displayName ? ` (${p.displayName})` : ""} — \`${p.did}\``,
+    p.description ? `Bio: ${p.description}` : "Bio: _(none)_",
+    `Followers: ${p.followersCount ?? 0} | Following: ${p.followsCount ?? 0} | Posts: ${p.postsCount ?? 0}`,
+  ].join("\n");
+}
+
 export async function communicate(): Promise<void> {
   console.log("[communicate] Starting...");
 
-  const [systemPrompt, mindset, ownProfile] = await Promise.all([
+  const [systemPrompt, mindset, ownProfile, notifications] = await Promise.all([
     readPromptFile("communicate.md"),
     readAgentFile("mindset.md"),
     bluesky.getProfile(CONFIG.bluesky.handle),
+    bluesky.getNotifications(),
   ]);
+
+  // Find accounts that followed us but we haven't followed back
+  const followerDids = [...new Set(
+    notifications.filter((n) => n.reason === "follow").map((n) => n.author.did),
+  )];
+  const unfollowedFollowers = await bluesky.getUnfollowedFollowers(followerDids);
 
   const followingSuggestion =
     (ownProfile.followsCount ?? 0) < CONFIG.targetFollowCount
       ? `\n\n> **Note:** You are currently following ${ownProfile.followsCount ?? 0} accounts (target: ${CONFIG.targetFollowCount}). Consider finding someone interesting on your timeline to follow this cycle.`
       : "";
 
-  const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion +
+  const newFollowersSection = unfollowedFollowers.length > 0
+    ? `\n\n## New Followers to Evaluate\n\nThese accounts recently followed you and you haven't followed back. Review each and decide whether to follow them.\n\n${unfollowedFollowers.map(formatFollowerProfile).join("\n\n")}`
+    : "";
+
+  const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion + newFollowersSection +
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")';
 
   const response = await callSkill(systemPrompt, userContent, {

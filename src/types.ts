@@ -87,4 +87,6 @@ export interface BlueskyProfile {
   followsCount?: number;
   postsCount?: number;
   indexedAt?: string;
+  /** True if the agent currently follows this account */
+  weFollow?: boolean;
 }

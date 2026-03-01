@@ -52,20 +52,15 @@ export async function ruminate(): Promise<void> {
     const now = new Date().toISOString();
     const HAS_TS = /^\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\] /;
 
-    // Exact lines from the current file — used to detect unchanged carry-forwards
-    const currentMemory = await readAgentFile("short_term_memory.md");
-    const existingLines = new Set(
-      currentMemory.split("\n").map((l) => l.trim()).filter((l) => HAS_TS.test(l)),
-    );
-
     const thoughts = memoryMatch[1]
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith("#"))
       .map((l) => {
-        if (!HAS_TS.test(l)) return `[${now}] ${l}`;        // new entry
-        if (existingLines.has(l)) return l;                  // unchanged, keep timestamp
-        return `[${now}] ${l.replace(HAS_TS, "")}`;         // text edited, re-timestamp
+        // Model kept the [ISO timestamp] prefix → preserve it (thought unchanged or minor rewording).
+        // Model dropped the prefix → significant change or new thought, assign fresh timestamp.
+        if (HAS_TS.test(l)) return l;
+        return `[${now}] ${l}`;
       });
 
     await writeAgentFile(

@@ -146,9 +146,31 @@ function parseMemoryEntries(content: string): { header: string; entries: MemoryE
   return { header, entries };
 }
 
+function relativeAge(ts: number): string {
+  const diffMs = Date.now() - ts;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days}d ago`;
+  return `${Math.floor(days / 7)}w ago`;
+}
+
+function formatEntryForContext(entry: MemoryEntry): string {
+  if (entry.ts === 0) return entry.raw;
+  const age = relativeAge(entry.ts);
+  if (OBS_TS_RE.test(entry.raw)) {
+    return entry.raw.replace(OBS_TS_RE, `[${age}] `);
+  }
+  return entry.raw.replace(SEC_TS_RE, `— ${age}`);
+}
+
 /**
  * Reads short_term_memory.md for model input, sorting entries oldest-first
- * (newest last, for LLM recency benefit).
+ * (newest last, for LLM recency benefit). Timestamps are shown as relative
+ * ages; a header note explains that recency implies greater weight.
  */
 export async function readShortTermMemory(): Promise<string> {
   const content = await readAgentFile("short_term_memory.md");
@@ -156,7 +178,8 @@ export async function readShortTermMemory(): Promise<string> {
   if (entries.length <= 1) return content;
 
   entries.sort((a, b) => a.ts - b.ts);
-  return `${header}\n\n${entries.map((e) => e.raw).join("\n")}\n`;
+  const note = "_(oldest → newest; entries closer to the bottom are more recent and carry greater weight)_";
+  return `${header}\n${note}\n\n${entries.map(formatEntryForContext).join("\n")}\n`;
 }
 
 /**

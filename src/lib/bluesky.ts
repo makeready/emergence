@@ -324,6 +324,22 @@ export async function deleteRepost(repostUri: string): Promise<void> {
 // Writing — DMs
 // ---------------------------------------------------------------------------
 
+/**
+ * Given a list of DIDs, returns profiles for those we don't currently follow.
+ * Uses batched getProfiles (up to 25 per request) to check follow status.
+ */
+export async function getUnfollowedFollowers(dids: string[]): Promise<BlueskyProfile[]> {
+  if (dids.length === 0) return [];
+  const bsky = await login();
+  const results: BlueskyProfile[] = [];
+  for (let i = 0; i < dids.length; i += 25) {
+    const chunk = dids.slice(i, i + 25);
+    const response = await bsky.getProfiles({ actors: chunk });
+    results.push(...response.data.profiles.map(mapProfile));
+  }
+  return results.filter((p) => !p.weFollow);
+}
+
 export async function isFollowedBy(did: string): Promise<boolean> {
   const bsky = await login();
   try {
@@ -524,6 +540,7 @@ function mapProfile(profile: {
   followsCount?: number;
   postsCount?: number;
   indexedAt?: string;
+  viewer?: { following?: string };
 }): BlueskyProfile {
   return {
     did: profile.did,
@@ -535,6 +552,7 @@ function mapProfile(profile: {
     followsCount: profile.followsCount,
     postsCount: profile.postsCount,
     indexedAt: profile.indexedAt,
+    weFollow: !!profile.viewer?.following,
   };
 }
 
