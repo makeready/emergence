@@ -1,8 +1,14 @@
 node_modules/
 dist/
 .env
+.DS_Store
 
 # Agent runtime state (keep templates, ignore live state)
 agent/*.md
+agent/journal/
 agent/journal/*.md
+agent/.DS_Store
 !agent/.gitkeep
+agent/people/
+agent/ingest_dids.json
+agent/cycle_log.json

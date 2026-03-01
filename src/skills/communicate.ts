@@ -1,7 +1,7 @@
-import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readPeopleFiles, writePeopleFile, parsePeopleUpdates } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
 import * as bluesky from "../lib/bluesky.js";
-import type { CommunicateAction } from "../types.js";
+import type { CommunicateAction, BlueskyProfile } from "../types.js";
 import { CONFIG } from "../config.js";
 
 function atUriToWebUrl(uri: string): string {
@@ -56,7 +56,31 @@ function parseActions(response: string): CommunicateAction[] {
   return actions;
 }
 
-async function executeAction(action: CommunicateAction): Promise<string> {
+/** Returns the DIDs of all accounts targeted by a set of actions. */
+function collectTargetDids(actions: CommunicateAction[]): string[] {
+  const dids = new Set<string>();
+  for (const a of actions) {
+    switch (a.action) {
+      case "reply":   dids.add(extractDid(a.postUri)); break;
+      case "dm":
+      case "follow":  dids.add(a.did); break;
+      case "unfollow": dids.add(extractDid(a.followUri)); break;
+      case "like":
+      case "repost":  dids.add(extractDid(a.uri)); break;
+    }
+  }
+  return [...dids];
+}
+
+/** Returns a markdown link like `[@handle (Display Name)](profile-url)` for a DID. */
+function profileLink(did: string, profiles: Map<string, BlueskyProfile>): string {
+  const p = profiles.get(did);
+  if (!p) return `[${did}](${didToWebUrl(did)})`;
+  const label = p.displayName ? `@${p.handle} (${p.displayName})` : `@${p.handle}`;
+  return `[${label}](${didToWebUrl(did)})`;
+}
+
+async function executeAction(action: CommunicateAction, profiles: Map<string, BlueskyProfile>): Promise<string> {
   switch (action.action) {
     case "post": {
       const result = await bluesky.post(action.text);
@@ -64,47 +88,94 @@ async function executeAction(action: CommunicateAction): Promise<string> {
       return `Posted: "${action.text}"${link}`;
     }
     case "reply": {
+      const rootUri = action.rootUri ?? action.postUri;
+      const rootCid = action.rootCid ?? action.postCid;
+      const authorDid = extractDid(action.postUri);
+      if (!CONFIG.allowReplyToNonFollowers) {
+        const followed = await bluesky.isFollowedBy(authorDid);
+        if (!followed) {
+          return `Skipped reply to ${profileLink(authorDid, profiles)} — author does not follow us`;
+        }
+      }
       const result = await bluesky.reply(
         action.text,
         action.postUri,
         action.postCid,
-        action.rootUri,
-        action.rootCid,
+        rootUri,
+        rootCid,
       );
-      const targetLink = `[post](${atUriToWebUrl(action.postUri)})`;
       const replyLink = result.uri !== "dry-run" ? ` ([view reply](${atUriToWebUrl(result.uri)}))` : "";
-      return `Replied to ${targetLink}: "${action.text}"${replyLink}`;
+      return `Replied to ${profileLink(authorDid, profiles)} ([post](${atUriToWebUrl(action.postUri)})): "${action.text}"${replyLink}`;
     }
     case "dm":
       await bluesky.sendDM(action.did, action.text);
-      return `DM to [${action.did}](${didToWebUrl(action.did)}): "${action.text}"`;
+      return `DM to ${profileLink(action.did, profiles)}: "${action.text}"`;
     case "follow":
       await bluesky.follow(action.did);
-      return `Followed [${action.did}](${didToWebUrl(action.did)})`;
+      return `Followed ${profileLink(action.did, profiles)}`;
     case "unfollow": {
       await bluesky.unfollow(action.followUri);
       const did = extractDid(action.followUri);
-      return `Unfollowed [${did}](${didToWebUrl(did)})`;
+      return `Unfollowed ${profileLink(did, profiles)}`;
     }
     case "like":
       await bluesky.like(action.uri, action.cid);
-      return `Liked [post](${atUriToWebUrl(action.uri)})`;
+      return `Liked [post](${atUriToWebUrl(action.uri)}) by ${profileLink(extractDid(action.uri), profiles)}`;
     case "repost":
       await bluesky.repost(action.uri, action.cid);
-      return `Reposted [post](${atUriToWebUrl(action.uri)})`;
+      return `Reposted [post](${atUriToWebUrl(action.uri)}) by ${profileLink(extractDid(action.uri), profiles)}`;
   }
+}
+
+function formatFollowerProfile(p: BlueskyProfile): string {
+  return [
+    `**@${p.handle}**${p.displayName ? ` (${p.displayName})` : ""} — \`${p.did}\``,
+    p.description ? `Bio: ${p.description}` : "Bio: _(none)_",
+    `Followers: ${p.followersCount ?? 0} | Following: ${p.followsCount ?? 0} | Posts: ${p.postsCount ?? 0}`,
+  ].join("\n");
 }
 
 export async function communicate(): Promise<void> {
   console.log("[communicate] Starting...");
 
-  const [systemPrompt, mindset] = await Promise.all([
+  const [systemPrompt, mindset, ownProfile, notifications, ingestDidsRaw] = await Promise.all([
     readPromptFile("communicate.md"),
     readAgentFile("mindset.md"),
+    bluesky.getProfile(CONFIG.bluesky.handle),
+    bluesky.getNotifications(),
+    readAgentFile("ingest_dids.json"),
   ]);
 
-  const userContent = "## Current Mindset\n\n" + mindset +
-    '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")';
+  // Find accounts that followed us but we haven't followed back
+  const followerDids = [...new Set(
+    notifications.filter((n) => n.reason === "follow").map((n) => n.author.did),
+  )];
+  const unfollowedFollowers = await bluesky.getUnfollowedFollowers(followerDids);
+
+  // Load people files for all known DIDs this cycle
+  let ingestDids: string[] = [];
+  try { ingestDids = JSON.parse(ingestDidsRaw); } catch { /* ignore */ }
+  const notifDids = notifications.map((n) => n.author.did);
+  const newFollowerDids = unfollowedFollowers.map((p) => p.did);
+  const allPeopleDids = [...new Set([...ingestDids, ...notifDids, ...newFollowerDids])];
+  const peopleFiles = await readPeopleFiles(allPeopleDids);
+  const peopleEntries = Object.entries(peopleFiles);
+  const peopleSection = peopleEntries.length > 0
+    ? "\n\n## People Context\n\nYou have notes on these accounts:\n\n" +
+      peopleEntries.map(([did, content]) => `### ${did}\n\n${content}`).join("\n\n")
+    : "";
+
+  const followingSuggestion =
+    (ownProfile.followsCount ?? 0) < CONFIG.targetFollowCount
+      ? `\n\n> **Note:** You are currently following ${ownProfile.followsCount ?? 0} accounts (target: ${CONFIG.targetFollowCount}). Consider finding someone interesting on your timeline to follow this cycle.`
+      : "";
+
+  const newFollowersSection = unfollowedFollowers.length > 0
+    ? `\n\n## New Followers to Evaluate\n\nThese accounts recently followed you and you haven't followed back. Review each and decide whether to follow them.\n\n${unfollowedFollowers.map(formatFollowerProfile).join("\n\n")}`
+    : "";
+
+  const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion + newFollowersSection + peopleSection +
+    '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")\n\nOptionally add a third section:\n\n## People Updates\n(if you have new thoughts about specific people, record them here)';
 
   const response = await callSkill(systemPrompt, userContent, {
     model: CONFIG.anthropic.modelDeep,
@@ -112,11 +183,17 @@ export async function communicate(): Promise<void> {
 
   // Parse and execute actions
   const actions = parseActions(response);
+
+  // Batch-fetch profiles for all target accounts so log entries include names
+  const targetDids = collectTargetDids(actions);
+  const targetProfiles = targetDids.length > 0 ? await bluesky.getProfiles(targetDids) : [];
+  const profileMap = new Map(targetProfiles.map((p) => [p.did, p]));
+
   const actionLog: string[] = [];
 
   for (const action of actions) {
     try {
-      const result = await executeAction(action);
+      const result = await executeAction(action, profileMap);
       actionLog.push(result);
     } catch (err) {
       const body = JSON.stringify(action);
@@ -141,6 +218,13 @@ export async function communicate(): Promise<void> {
   if (mindsetMatch) {
     await writeAgentFile("mindset.md", mindsetMatch[1].trim());
     console.log("[communicate] Updated mindset.md");
+  }
+
+  // Write any people updates the model produced
+  const peopleUpdates = parsePeopleUpdates(response);
+  for (const [did, content] of Object.entries(peopleUpdates)) {
+    await writePeopleFile(did, content);
+    console.log(`[communicate] Updated people file for ${did}`);
   }
 
   console.log(`[communicate] ${actions.length} actions processed`);

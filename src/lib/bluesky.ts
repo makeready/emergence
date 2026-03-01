@@ -119,18 +119,49 @@ export async function getNotifications(): Promise<BlueskyNotification[]> {
   const bsky = await login();
   const response = await bsky.listNotifications({ limit: 50 });
 
-  return response.data.notifications.map((n) => ({
-    uri: n.uri,
-    cid: n.cid,
-    author: {
-      handle: n.author.handle,
-      displayName: n.author.displayName,
-      did: n.author.did,
-    },
-    reason: n.reason,
-    text: (n.record as { text?: string }).text,
-    createdAt: n.indexedAt,
-  }));
+  return response.data.notifications.map((n) => {
+    const record = n.record as {
+      text?: string;
+      subject?: { uri?: string };
+      reply?: { parent?: { uri?: string } };
+    };
+
+    // For likes/reposts the subject field holds the target post URI.
+    // For replies the parent field holds the post being replied to.
+    let subjectUri: string | undefined;
+    if (n.reason === "like" || n.reason === "repost") {
+      subjectUri = record.subject?.uri;
+    } else if (n.reason === "reply") {
+      subjectUri = record.reply?.parent?.uri;
+    }
+
+    return {
+      uri: n.uri,
+      cid: n.cid,
+      author: {
+        handle: n.author.handle,
+        displayName: n.author.displayName,
+        did: n.author.did,
+      },
+      reason: n.reason,
+      text: record.text,
+      createdAt: n.indexedAt,
+      subjectUri,
+    };
+  });
+}
+
+export async function getPosts(uris: string[]): Promise<BlueskyPost[]> {
+  if (uris.length === 0) return [];
+  const bsky = await login();
+  const results: BlueskyPost[] = [];
+  // API accepts up to 25 URIs per request
+  for (let i = 0; i < uris.length; i += 25) {
+    const chunk = uris.slice(i, i + 25);
+    const response = await bsky.getPosts({ uris: chunk });
+    results.push(...response.data.posts.map(mapPost));
+  }
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -324,6 +355,32 @@ export async function deleteRepost(repostUri: string): Promise<void> {
 // Writing — DMs
 // ---------------------------------------------------------------------------
 
+/**
+ * Given a list of DIDs, returns profiles for those we don't currently follow.
+ * Uses batched getProfiles (up to 25 per request) to check follow status.
+ */
+export async function getUnfollowedFollowers(dids: string[]): Promise<BlueskyProfile[]> {
+  if (dids.length === 0) return [];
+  const bsky = await login();
+  const results: BlueskyProfile[] = [];
+  for (let i = 0; i < dids.length; i += 25) {
+    const chunk = dids.slice(i, i + 25);
+    const response = await bsky.getProfiles({ actors: chunk });
+    results.push(...response.data.profiles.map(mapProfile));
+  }
+  return results.filter((p) => !p.weFollow);
+}
+
+export async function isFollowedBy(did: string): Promise<boolean> {
+  const bsky = await login();
+  try {
+    const response = await bsky.getProfile({ actor: did });
+    return !!response.data.viewer?.followedBy;
+  } catch {
+    return false;
+  }
+}
+
 export async function sendDM(did: string, text: string): Promise<void> {
   if (CONFIG.dryRun) {
     console.log(
@@ -514,6 +571,7 @@ function mapProfile(profile: {
   followsCount?: number;
   postsCount?: number;
   indexedAt?: string;
+  viewer?: { following?: string };
 }): BlueskyProfile {
   return {
     did: profile.did,
@@ -525,6 +583,7 @@ function mapProfile(profile: {
     followsCount: profile.followsCount,
     postsCount: profile.postsCount,
     indexedAt: profile.indexedAt,
+    weFollow: !!profile.viewer?.following,
   };
 }
 

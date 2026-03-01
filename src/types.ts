@@ -13,7 +13,7 @@ export interface SkillResult {
 
 export type CommunicateAction =
   | { action: "post"; text: string }
-  | { action: "reply"; postUri: string; postCid: string; rootUri: string; rootCid: string; text: string }
+  | { action: "reply"; postUri: string; postCid: string; rootUri?: string; rootCid?: string; text: string }
   | { action: "dm"; did: string; text: string }
   | { action: "follow"; did: string }
   | { action: "unfollow"; followUri: string }
@@ -75,6 +75,8 @@ export interface BlueskyNotification {
   reason: string; // 'reply' | 'mention' | 'follow' | 'like' | 'repost'
   text?: string;
   createdAt: string;
+  /** URI of the agent's own post that was liked, reposted, or replied to */
+  subjectUri?: string;
 }
 
 export interface BlueskyProfile {
@@ -87,4 +89,6 @@ export interface BlueskyProfile {
   followsCount?: number;
   postsCount?: number;
   indexedAt?: string;
+  /** True if the agent currently follows this account */
+  weFollow?: boolean;
 }

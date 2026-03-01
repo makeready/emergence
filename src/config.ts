@@ -26,7 +26,11 @@ export const CONFIG = {
     prompts: resolve(ROOT, "prompts"),
   },
   dryRun: process.env.DRY_RUN !== "false",
+  /** If false (default), the agent may only reply to accounts that follow it */
+  allowReplyToNonFollowers: process.env.ALLOW_REPLY_TO_NON_FOLLOWERS === "true",
   logLevel: process.env.LOG_LEVEL || "info",
+  /** Target number of accounts to follow */
+  targetFollowCount: parseInt(process.env.TARGET_FOLLOW_COUNT || "204", 10),
   /** Max lines to keep in short_term_memory.md before truncation */
   maxShortTermMemoryLines: 200,
   /** Max lines of journal to include in context */
