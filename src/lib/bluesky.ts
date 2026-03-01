@@ -41,14 +41,34 @@ export async function login(): Promise<BskyAgent> {
 export async function getTimeline(
   limit = CONFIG.timelineLimit,
   pages = CONFIG.timelinePages,
+  since?: string,
 ): Promise<BlueskyPost[]> {
   const bsky = await login();
   const posts: BlueskyPost[] = [];
   let cursor: string | undefined;
+  const sinceTime = since ? new Date(since).getTime() : 0;
 
   for (let page = 0; page < pages; page++) {
     const response = await bsky.getTimeline({ limit, cursor });
-    posts.push(...response.data.feed.map((item) => mapPost(item.post)));
+    const pagePosts = response.data.feed.map((item) => mapPost(item.post));
+
+    if (sinceTime > 0) {
+      let hitOld = false;
+      for (const post of pagePosts) {
+        if (new Date(post.createdAt).getTime() <= sinceTime) {
+          hitOld = true;
+          break;
+        }
+        posts.push(post);
+      }
+      if (hitOld) {
+        console.log(`  [bluesky] Reached posts from previous cycle on page ${page + 1}, stopping`);
+        break;
+      }
+    } else {
+      posts.push(...pagePosts);
+    }
+
     cursor = response.data.cursor;
     if (!cursor) break;
   }
