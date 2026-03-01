@@ -1,4 +1,4 @@
-import { readAgentFile, writeAgentFile, appendAgentFile, readPromptFile } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readShortTermMemory } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
 import * as bluesky from "../lib/bluesky.js";
 import type { IterateChange } from "../types.js";
@@ -95,7 +95,7 @@ export async function iterate(): Promise<void> {
     readPromptFile("iterate.md"),
     readAgentFile("mindset.md"),
     readAgentFile("identity.md"),
-    readAgentFile("short_term_memory.md"),
+    readShortTermMemory(),
   ]);
 
   const userContent = [
@@ -158,7 +158,7 @@ export async function iterate(): Promise<void> {
 
   // Log to journal
   const logEntry = `\n\n### Iteration Log — ${new Date().toISOString()}\n${CONFIG.dryRun ? "*(dry run — changes not applied)*\n" : ""}${changeLog.map((c) => "- " + c).join("\n")}`;
-  await appendAgentFile("journal.md", logEntry);
+  await appendToJournal(logEntry);
 
   // Update mindset
   const mindsetMatch = response.match(

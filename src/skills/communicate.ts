@@ -1,4 +1,4 @@
-import { readAgentFile, writeAgentFile, appendAgentFile, readPromptFile } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
 import * as bluesky from "../lib/bluesky.js";
 import type { CommunicateAction } from "../types.js";
@@ -132,7 +132,7 @@ export async function communicate(): Promise<void> {
 
   // Log actions to journal
   const logEntry = `\n\n### Communication Log — ${new Date().toISOString()}\n${CONFIG.dryRun ? "*(dry run)*\n" : ""}${actionLog.map((a) => "- " + a).join("\n")}`;
-  await appendAgentFile("journal.md", logEntry);
+  await appendToJournal(logEntry);
 
   // Update mindset
   const mindsetMatch = response.match(

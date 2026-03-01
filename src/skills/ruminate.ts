@@ -1,7 +1,8 @@
 import {
   readAgentFile,
   writeAgentFile,
-  appendAgentFile,
+  appendToJournal,
+  readRecentJournal,
   readPromptFile,
 } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
@@ -10,17 +11,12 @@ import { CONFIG } from "../config.js";
 export async function ruminate(): Promise<void> {
   console.log("[ruminate] Starting...");
 
-  const [systemPrompt, mindset, rawNotes, journal] = await Promise.all([
+  const [systemPrompt, mindset, rawNotes, recentJournal] = await Promise.all([
     readPromptFile("ruminate.md"),
     readAgentFile("mindset.md"),
     readAgentFile("raw_notes.md"),
-    readAgentFile("journal.md"),
+    readRecentJournal(CONFIG.maxJournalContextLines),
   ]);
-
-  const recentJournal = journal
-    .split("\n")
-    .slice(-CONFIG.maxJournalContextLines)
-    .join("\n");
 
   const userContent = [
     `**Current time: ${new Date().toISOString()}**`,
@@ -49,8 +45,8 @@ export async function ruminate(): Promise<void> {
     console.log("[ruminate] Updated mindset.md");
   }
   if (journalMatch) {
-    await appendAgentFile("journal.md", "\n\n" + journalMatch[1].trim());
-    console.log("[ruminate] Appended to journal.md");
+    await appendToJournal("\n\n" + journalMatch[1].trim());
+    console.log("[ruminate] Appended to journal");
   }
   if (memoryMatch) {
     const timestamp = new Date().toISOString();

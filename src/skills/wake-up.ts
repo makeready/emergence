@@ -1,5 +1,5 @@
 import { createInterface } from "readline";
-import { readAgentFile, writeAgentFile, readPromptFile } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, readPromptFile, readShortTermMemory, readRecentJournal } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
 import { CONFIG } from "../config.js";
 
@@ -123,11 +123,11 @@ async function initializeIdentity(): Promise<string> {
 export async function wakeUp(): Promise<void> {
   console.log("[wake-up] Starting...");
 
-  let [systemPrompt, identity, shortTermMemory, journal] = await Promise.all([
+  let [systemPrompt, identity, shortTermMemory, recentJournal] = await Promise.all([
     readPromptFile("wake-up.md"),
     readAgentFile("identity.md"),
-    readAgentFile("short_term_memory.md"),
-    readAgentFile("journal.md"),
+    readShortTermMemory(),
+    readRecentJournal(CONFIG.maxJournalContextLines),
   ]);
 
   // If identity is blank, run the interactive initialization
@@ -141,12 +141,8 @@ export async function wakeUp(): Promise<void> {
     "## short_term_memory.md\n\n" + shortTermMemory,
   ];
 
-  const journalLines = journal.split("\n");
-  if (journalLines.length > 2) {
-    const recentJournal = journalLines
-      .slice(-CONFIG.maxJournalContextLines)
-      .join("\n");
-    parts.push("## journal.md (recent entries)\n\n" + recentJournal);
+  if (recentJournal.trim()) {
+    parts.push("## journal (recent entries)\n\n" + recentJournal);
   }
 
   const userContent = parts.join("\n\n---\n\n");

@@ -30,7 +30,7 @@ export const CONFIG = {
   /** Max lines to keep in short_term_memory.md before truncation */
   maxShortTermMemoryLines: 200,
   /** Max lines of journal to include in context */
-  maxJournalContextLines: 300,
+  maxJournalContextLines: 100,
   /** Timeline posts to fetch per page */
   timelineLimit: 50,
   /** Number of timeline pages to fetch per cycle */

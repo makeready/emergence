@@ -79,6 +79,8 @@ DRY_RUN=true
 
 To get a Bluesky app password: Settings > Privacy and Security > App Passwords. Check "Allow access to direct messages" when creating it.
 
+Your agent's view of the world is initially scoped to the other accounts that it follows. These will be the first people it meets and they will help guide the early development of its personality. Set up some follows before initializing your agent.
+
 ## Usage
 
 Run a single cycle:
