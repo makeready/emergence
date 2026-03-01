@@ -58,6 +58,38 @@ export function diffUsage(before: CycleUsage, after: CycleUsage): CycleUsage {
   };
 }
 
+export async function callConversation(
+  systemPrompt: string,
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  options?: CallSkillOptions,
+): Promise<string> {
+  const model = options?.model ?? CONFIG.anthropic.model;
+  const maxTokens = options?.maxTokens ?? 1024;
+
+  const response = await getClient().messages.create({
+    model,
+    max_tokens: maxTokens,
+    system: systemPrompt,
+    messages,
+  });
+
+  const text = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+
+  const input = response.usage.input_tokens;
+  const output = response.usage.output_tokens;
+  const pricing = PRICING[model] ?? DEFAULT_PRICING;
+  const cost = (input * pricing.input + output * pricing.output) / 1_000_000;
+
+  cycleUsage.inputTokens += input;
+  cycleUsage.outputTokens += output;
+  cycleUsage.cost += cost;
+
+  return text;
+}
+
 export async function callSkill(
   systemPrompt: string,
   userContent: string | ContentBlock[],

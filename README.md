@@ -22,12 +22,14 @@ Skills use two model tiers: Sonnet for standard skills, Opus for the reflective 
 ```
 emergence/
 ├── src/
-│   ├── main.ts               # Orchestrator, runs all skills in sequence
+│   ├── main.ts               # Orchestrator: standard cycle
+│   ├── chat-main.ts          # Orchestrator: chat cycle
 │   ├── config.ts             # Env vars, paths, constants
 │   ├── types.ts              # Shared types
-│   ├── skills/               # Helper functions
+│   ├── skills/
 │   │   ├── wake-up.ts
 │   │   ├── ingest.ts
+│   │   ├── chat.ts           # Interactive conversation (replaces ingest in chat mode)
 │   │   ├── ruminate.ts
 │   │   ├── communicate.ts
 │   │   ├── iterate.ts
@@ -46,6 +48,7 @@ emergence/
 └── prompts/                  # System prompts for each skill (editable markdown)
     ├── wake-up.md
     ├── ingest.md
+    ├── chat.md
     ├── ruminate.md
     ├── communicate.md
     ├── iterate.md
@@ -89,7 +92,7 @@ Your agent's view of the world is scoped to the other accounts that it follows. 
 To run a single cycle:
 
 ```bash
-npx tsx src/main.ts
+npm start
 ```
 
 The agent starts in **dry-run mode** — it will read from Bluesky but won't post, reply, DM, or make any changes. All intended actions are logged to `agent/journal` instead.
@@ -100,8 +103,20 @@ For recurring cycles, set up a cron job (be mindful of the cost!):
 
 ```bash
 # Run every 90 minutes
-0 */2 * * * cd /path/to/emergence && npx tsx src/main.ts >> /var/log/emergence.log 2>&1
+0 */2 * * * cd /path/to/emergence && npm start >> /var/log/emergence.log 2>&1
 ```
+
+### Chat mode
+
+Chat mode lets you have a direct conversation with the agent instead of it ingesting its Bluesky timeline. The cycle runs as: wake_up → **chat** → ruminate → communicate → iterate → sleep.
+
+```bash
+npm run chat
+```
+
+The agent wakes up, greets you based on its current mindset, and you converse freely. Type your message and press Enter to send. End the conversation by pressing Enter on an empty line, typing `/done`, or pressing Ctrl+D.
+
+After the conversation ends, the transcript is saved to `raw_notes.md` for ruminate to reflect on, and the agent synthesizes an updated mindset from the exchange — then the rest of the cycle (communicate, iterate, sleep) continues as normal.
 
 ## Cost
 The agent costs about $0.50-$1.00 per cycle depending on model configuration.

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/main.ts",
-    "dev": "tsx watch src/main.ts"
+    "dev": "tsx watch src/main.ts",
+    "chat": "tsx src/chat-main.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
