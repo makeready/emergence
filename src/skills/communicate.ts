@@ -4,6 +4,36 @@ import * as bluesky from "../lib/bluesky.js";
 import type { CommunicateAction } from "../types.js";
 import { CONFIG } from "../config.js";
 
+function atUriToWebUrl(uri: string): string {
+  const match = uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/([^/]+)$/);
+  if (match) return `https://bsky.app/profile/${match[1]}/post/${match[2]}`;
+  return uri;
+}
+
+function didToWebUrl(did: string): string {
+  return `https://bsky.app/profile/${did}`;
+}
+
+function extractDid(uri: string): string {
+  return uri.match(/^at:\/\/([^/]+)\//)?.[1] ?? uri;
+}
+
+/** Returns a markdown link identifying the target of an action, used in error log entries. */
+function actionTarget(action: CommunicateAction): string {
+  switch (action.action) {
+    case "post": return "";
+    case "reply": return ` ([post](${atUriToWebUrl(action.postUri)}))`;
+    case "dm": return ` [${action.did}](${didToWebUrl(action.did)}) — "${action.text}"`;
+    case "follow": return ` ([${action.did}](${didToWebUrl(action.did)}))`;
+    case "unfollow": {
+      const did = extractDid(action.followUri);
+      return ` ([${did}](${didToWebUrl(did)}))`;
+    }
+    case "like": return ` ([post](${atUriToWebUrl(action.uri)}))`;
+    case "repost": return ` ([post](${atUriToWebUrl(action.uri)}))`;
+  }
+}
+
 function parseActions(response: string): CommunicateAction[] {
   const actions: CommunicateAction[] = [];
   const jsonPattern = /```json\s*\n([\s\S]*?)```|(\{[^\n]*"action"[^\n]*\})/g;
@@ -28,33 +58,40 @@ function parseActions(response: string): CommunicateAction[] {
 
 async function executeAction(action: CommunicateAction): Promise<string> {
   switch (action.action) {
-    case "post":
-      await bluesky.post(action.text);
-      return `Posted: "${action.text}"`;
-    case "reply":
-      await bluesky.reply(
+    case "post": {
+      const result = await bluesky.post(action.text);
+      const link = result.uri !== "dry-run" ? ` ([view post](${atUriToWebUrl(result.uri)}))` : "";
+      return `Posted: "${action.text}"${link}`;
+    }
+    case "reply": {
+      const result = await bluesky.reply(
         action.text,
         action.postUri,
         action.postCid,
         action.rootUri,
         action.rootCid,
       );
-      return `Replied to ${action.postUri}: "${action.text}"`;
+      const targetLink = `[post](${atUriToWebUrl(action.postUri)})`;
+      const replyLink = result.uri !== "dry-run" ? ` ([view reply](${atUriToWebUrl(result.uri)}))` : "";
+      return `Replied to ${targetLink}: "${action.text}"${replyLink}`;
+    }
     case "dm":
       await bluesky.sendDM(action.did, action.text);
-      return `DM to ${action.did}: "${action.text}"`;
+      return `DM to [${action.did}](${didToWebUrl(action.did)}): "${action.text}"`;
     case "follow":
       await bluesky.follow(action.did);
-      return `Followed ${action.did}`;
-    case "unfollow":
+      return `Followed [${action.did}](${didToWebUrl(action.did)})`;
+    case "unfollow": {
       await bluesky.unfollow(action.followUri);
-      return `Unfollowed ${action.followUri}`;
+      const did = extractDid(action.followUri);
+      return `Unfollowed [${did}](${didToWebUrl(did)})`;
+    }
     case "like":
       await bluesky.like(action.uri, action.cid);
-      return `Liked ${action.uri}`;
+      return `Liked [post](${atUriToWebUrl(action.uri)})`;
     case "repost":
       await bluesky.repost(action.uri, action.cid);
-      return `Reposted ${action.uri}`;
+      return `Reposted [post](${atUriToWebUrl(action.uri)})`;
   }
 }
 
@@ -82,7 +119,7 @@ export async function communicate(): Promise<void> {
       const result = await executeAction(action);
       actionLog.push(result);
     } catch (err) {
-      const desc = `Failed to ${action.action}: ${err}`;
+      const desc = `Failed to ${action.action}${actionTarget(action)}: ${err}`;
       console.error(`  [communicate] ${desc}`);
       actionLog.push(desc);
     }

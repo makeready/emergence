@@ -91,14 +91,16 @@ async function applyChange(change: IterateChange): Promise<string> {
         applied.push(`handle: ${handleMatch[1]}`);
       }
 
+      const profileLink = `[view profile](https://bsky.app/profile/${CONFIG.bluesky.handle})`;
+
       if (applied.length === 0) {
         // Couldn't parse specific fields — log the raw proposal
         console.log(`  [iterate] Could not parse profile change: "${change.text}"`);
-        return `Profile change proposed but not applied (could not parse): "${change.text}" — ${change.reason}`;
+        return `Profile change proposed but not applied (could not parse): "${change.text}" — ${change.reason} (${profileLink})`;
       }
 
       console.log(`  [iterate] Updated profile: ${applied.join(", ")}`);
-      return `Applied profile update (${applied.join(", ")}): ${change.reason}`;
+      return `Applied profile update (${applied.join(", ")}) (${profileLink}): ${change.reason}`;
     }
   }
 }
@@ -148,7 +150,10 @@ export async function iterate(): Promise<void> {
         const result = await applyChange(change);
         changeLog.push(result);
       } catch (err) {
-        const desc = `Failed to apply ${change.change} change: ${err}`;
+        const profileSuffix = change.change === "profile"
+          ? ` ([view profile](https://bsky.app/profile/${CONFIG.bluesky.handle}))`
+          : "";
+        const desc = `Failed to apply ${change.change} change${profileSuffix}: ${err}`;
         console.error(`  [iterate] ${desc}`);
         changeLog.push(desc);
       }
