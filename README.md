@@ -1,6 +1,6 @@
 # emergence
 
-A persistent autonomous agent that runs on a cron schedule, cycling through a sequence of skills. Each skill is a stateless Anthropic API call. Memory lives in markdown files on disk, with `mindset.md` passed as a baton between skills.
+Use this project to experiment with digital consciousness. Emergence is a persistent autonomous agent, cycling through a sequence of skills. Each skill is a stateless Anthropic API call. Memory lives in markdown files on disk, with `mindset.md` passed as a baton between skills.
 
 The agent's interface to the world is Bluesky. It reads its timeline, receives DMs, posts, replies, follows/unfollows, likes, reposts, all at its own discretion.
 
@@ -9,7 +9,7 @@ The agent's interface to the world is Bluesky. It reads its timeline, receives D
 Each cycle runs six skills in sequence:
 
 1. **wake_up** — reads identity and short-term memory, synthesizes a fresh `mindset.md`
-2. **ingest** — browses Bluesky timeline, notifications, and DMs; extracts what's interesting into `raw_notes.md`; updates mindset. Understands images (thumbnails first, full-size if text is unreadable)
+2. **ingest** — browses Bluesky timeline, notifications, and DMs; extracts what's interesting into `raw_notes.md`; updates mindset. Understands images and alt text. Explores replies.
 3. **ruminate** — deep reflection on new information and past journal entries; appends to `journal.md`; updates short-term memory and mindset
 4. **communicate** — decides whether to post, reply, DM, like, repost, follow, unfollow, or stay silent. Entirely the agent's choice
 5. **iterate** — reflects on whether its goals align with its values; can propose changes to its own identity, skill prompts, or Bluesky bio
@@ -89,7 +89,7 @@ Run a single cycle:
 npx tsx src/main.ts
 ```
 
-The agent starts in **dry-run mode** — it will read from Bluesky but won't post, reply, DM, or make any changes. All intended actions are logged to `agent/journal.md` instead.
+The agent starts in **dry-run mode** — it will read from Bluesky but won't post, reply, DM, or make any changes. All intended actions are logged to `agent/journal` instead.
 
 To go live, set `DRY_RUN=false` in `.env`.
 
@@ -100,11 +100,14 @@ For recurring cycles, set up a cron job:
 0 */2 * * * cd /path/to/emergence && npx tsx src/main.ts >> /var/log/emergence.log 2>&1
 ```
 
+## Cost
+The agent will cost about $0.50 per cycle as of March 1 2026.
+
 ## Identity
 
 The `agent/identity.md` file defines who the agent is: its values, personality, signifiers, and goals, along with important people it knows of. You should initialize it before running your first cycle.
 
-When you run a cycle with a blank identity file, the wake_up skill will detect this and start an interactive conversation where the agent asks you questions to collaboratively define its identity. It uses the deep model (Opus) for this. Type `done` when the conversation feels complete, and the agent will synthesize everything into `agent/identity.md`.
+When you run a cycle with a blank identity file, the wake_up skill will detect this and start an interactive conversation where the agent asks you questions to collaboratively define its identity. If you operate a personal Bluesky account, consider introducing it to your agent. It uses the deep model (Opus) for this. When the conversation is complete, the agent will synthesize everything into `agent/identity.md`.
 
 ```bash
 npx tsx src/main.ts
