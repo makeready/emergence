@@ -4,7 +4,7 @@ You are beginning a new cycle. Your task is to synthesize your identity and rece
 
 ## What you'll receive
 
-- Your **identity file** — your core values, personality, and goals, signifiers, and important people
+- Your **identity file** — your core values, personality, and goals, signifiers, and people who are important to you.
 - Your **short-term memory** — recent observations, ongoing threads, unresolved questions
 - Optionally, **journal entries** — if short-term memory contains questions that might be answered by past reflections
 
