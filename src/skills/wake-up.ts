@@ -1,4 +1,4 @@
-import { createInterface } from "readline/promises";
+import { createInterface } from "readline";
 import { readAgentFile, writeAgentFile, readPromptFile } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
 import { CONFIG } from "../config.js";
@@ -28,7 +28,6 @@ Structure it with these sections:
 Write in first person. Be specific and authentic — this should feel like *your* identity, not a generic template. Include the nuances and tensions that emerged in conversation. Keep it concise but complete.`;
 
 function isBlankIdentity(content: string): boolean {
-  // Strip headers, whitespace, and the placeholder text
   const stripped = content
     .replace(/^#.*$/gm, "")
     .replace(/\*.*?\*/g, "")
@@ -36,8 +35,20 @@ function isBlankIdentity(content: string): boolean {
   return stripped.length === 0;
 }
 
+function prompt(rl: ReturnType<typeof createInterface>, query: string): Promise<string> {
+  return new Promise((resolve) => {
+    rl.question(query, (answer) => {
+      resolve(answer);
+    });
+  });
+}
+
 async function initializeIdentity(): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: process.stdin.isTTY ?? false,
+  });
 
   console.log("\n========================================");
   console.log("  Identity file is blank.");
@@ -56,31 +67,32 @@ async function initializeIdentity(): Promise<string> {
   conversationHistory.push({ role: "assistant", content: opening });
 
   // Conversation loop
-  while (true) {
-    const input = await rl.question("You: ");
+  try {
+    while (true) {
+      const input = await prompt(rl, "You: ");
 
-    if (input.toLowerCase().trim() === "done") {
-      break;
+      if (input.toLowerCase().trim() === "done") {
+        break;
+      }
+
+      conversationHistory.push({ role: "user", content: input });
+
+      const messages = conversationHistory
+        .map((m) => `${m.role === "user" ? "Human" : "Agent"}: ${m.content}`)
+        .join("\n\n");
+
+      const response = await callSkill(
+        IDENTITY_INIT_PROMPT,
+        messages + "\n\nContinue the conversation. Respond as the agent.",
+        { model: CONFIG.anthropic.modelDeep },
+      );
+
+      console.log(`\nAgent: ${response}\n`);
+      conversationHistory.push({ role: "assistant", content: response });
     }
-
-    conversationHistory.push({ role: "user", content: input });
-
-    // Build the full conversation for context
-    const messages = conversationHistory
-      .map((m) => `${m.role === "user" ? "Human" : "Agent"}: ${m.content}`)
-      .join("\n\n");
-
-    const response = await callSkill(
-      IDENTITY_INIT_PROMPT,
-      messages + "\n\nContinue the conversation. Respond as the agent.",
-      { model: CONFIG.anthropic.modelDeep },
-    );
-
-    console.log(`\nAgent: ${response}\n`);
-    conversationHistory.push({ role: "assistant", content: response });
+  } finally {
+    rl.close();
   }
-
-  rl.close();
 
   // Synthesize identity from conversation
   console.log("\n[wake-up] Synthesizing identity from conversation...");
@@ -124,8 +136,6 @@ export async function wakeUp(): Promise<void> {
     "## short_term_memory.md\n\n" + shortTermMemory,
   ];
 
-  // Include recent journal if short-term memory has unresolved questions
-  // or if there's journal content worth referencing
   const journalLines = journal.split("\n");
   if (journalLines.length > 2) {
     const recentJournal = journalLines

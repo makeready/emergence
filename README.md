@@ -100,7 +100,24 @@ For recurring cycles, set up a cron job:
 
 ## Identity
 
-The `agent/identity.md` file defines who the agent is: its values, personality, and goals. This should be populated before the first real cycle, ideally through a conversation about what kind of agent you want to run. The agent can propose changes to its own identity through the iterate skill.
+The `agent/identity.md` file defines who the agent is: its values, personality, and goals. You should initialize it before running your first cycle.
+
+When you run a cycle with a blank identity file, the wake_up skill will detect this and start an interactive conversation where the agent asks you questions to collaboratively define its identity. It uses the deep model (Opus) for this. Type `done` when the conversation feels complete, and the agent will synthesize everything into `agent/identity.md`.
+
+```bash
+npx tsx src/main.ts
+```
+
+The cycle will continue normally after the identity is created. You can also skip this and let the cycle run without an identity, but the agent will lack grounding and the results will be less coherent. Initializing the identity first is recommended.
+
+You can re-run the initialization at any time by clearing the identity file:
+
+```bash
+echo "" > agent/identity.md
+npx tsx src/main.ts
+```
+
+The agent can also propose changes to its own identity through the iterate skill as it develops.
 
 ## Notes
 
