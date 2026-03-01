@@ -142,8 +142,11 @@ export async function iterate(): Promise<void> {
         const profileSuffix = change.change === "profile"
           ? ` ([view profile](https://bsky.app/profile/${CONFIG.bluesky.handle}))`
           : "";
-        const desc = `Failed to apply ${change.change} change${profileSuffix}: ${err}`;
-        console.error(`  [iterate] ${desc}`);
+        const bodyBlock = change.change === "profile"
+          ? `\n  \`\`\`json\n  ${JSON.stringify(change)}\n  \`\`\``
+          : "";
+        const desc = `Failed to apply ${change.change} change${profileSuffix}: ${err}${bodyBlock}`;
+        console.error(`  [iterate] Failed to apply ${change.change} change: ${err}`);
         changeLog.push(desc);
       }
     }

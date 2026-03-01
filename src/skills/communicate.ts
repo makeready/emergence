@@ -119,8 +119,9 @@ export async function communicate(): Promise<void> {
       const result = await executeAction(action);
       actionLog.push(result);
     } catch (err) {
-      const desc = `Failed to ${action.action}${actionTarget(action)}: ${err}`;
-      console.error(`  [communicate] ${desc}`);
+      const body = JSON.stringify(action);
+      const desc = `Failed to ${action.action}${actionTarget(action)}: ${err}\n  \`\`\`json\n  ${body}\n  \`\`\``;
+      console.error(`  [communicate] Failed to ${action.action}: ${err}`);
       actionLog.push(desc);
     }
   }
