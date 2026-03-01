@@ -1,4 +1,4 @@
-import { readAgentFile, writeAgentFile, truncateByAge } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, truncateByAge, appendCycleLog } from "../lib/files.js";
 import { CONFIG } from "../config.js";
 
 export async function sleep(): Promise<void> {
@@ -27,4 +27,7 @@ export async function sleep(): Promise<void> {
   // Reset mindset
   await writeAgentFile("mindset.md", "# Mindset\n\n*Awaiting next wake_up cycle.*\n");
   console.log("[sleep] Reset mindset.md");
+
+  // Record this cycle's completion time for "N cycles ago" display
+  await appendCycleLog(new Date().toISOString());
 }

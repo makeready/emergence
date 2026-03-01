@@ -224,25 +224,44 @@ function parseMemoryEntries(content: string): { header: string; entries: MemoryE
   return { header, entries };
 }
 
-function relativeAge(ts: number): string {
-  const diffMs = Date.now() - ts;
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 2) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 14) return `${days}d ago`;
-  return `${Math.floor(days / 7)}w ago`;
+/**
+ * Returns "N cycles ago" (or "this cycle") based on how many recorded
+ * cycle-end times postdate ts.
+ */
+function cyclesAgo(ts: number, cycleTimes: number[]): string {
+  const count = cycleTimes.filter((t) => t > ts).length;
+  if (count === 0) return "this cycle";
+  if (count === 1) return "1 cycle ago";
+  return `${count} cycles ago`;
 }
 
-function formatEntryForContext(entry: MemoryEntry): string {
+function formatEntryForContext(entry: MemoryEntry, cycleTimes: number[]): string {
   if (entry.ts === 0) return entry.raw;
-  const age = relativeAge(entry.ts);
+  const age = cyclesAgo(entry.ts, cycleTimes);
   if (OBS_TS_RE.test(entry.raw)) {
     return entry.raw.replace(OBS_TS_RE, `[${age}] `);
   }
   return entry.raw.replace(SEC_TS_RE, `— ${age}`);
+}
+
+const CYCLE_LOG_MAX = 100;
+
+export async function appendCycleLog(timestamp: string): Promise<void> {
+  const raw = await readAgentFile("cycle_log.json");
+  let times: string[] = [];
+  try { times = JSON.parse(raw); } catch { /* start fresh */ }
+  times.push(timestamp);
+  if (times.length > CYCLE_LOG_MAX) times = times.slice(times.length - CYCLE_LOG_MAX);
+  await writeAgentFile("cycle_log.json", JSON.stringify(times));
+}
+
+async function readCycleLog(): Promise<number[]> {
+  const raw = await readAgentFile("cycle_log.json");
+  try {
+    return (JSON.parse(raw) as string[]).map((t) => new Date(t).getTime());
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -251,13 +270,16 @@ function formatEntryForContext(entry: MemoryEntry): string {
  * ages; a header note explains that recency implies greater weight.
  */
 export async function readShortTermMemory(): Promise<string> {
-  const content = await readAgentFile("short_term_memory.md");
+  const [content, cycleTimes] = await Promise.all([
+    readAgentFile("short_term_memory.md"),
+    readCycleLog(),
+  ]);
   const { header, entries } = parseMemoryEntries(content);
   if (entries.length <= 1) return content;
 
   entries.sort((a, b) => a.ts - b.ts);
   const note = "_(oldest → newest; entries closer to the bottom are more recent and carry greater weight)_";
-  return `${header}\n${note}\n\n${entries.map(formatEntryForContext).join("\n")}\n`;
+  return `${header}\n${note}\n\n${entries.map((e) => formatEntryForContext(e, cycleTimes)).join("\n")}\n`;
 }
 
 /**
