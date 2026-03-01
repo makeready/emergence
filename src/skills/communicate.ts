@@ -56,7 +56,31 @@ function parseActions(response: string): CommunicateAction[] {
   return actions;
 }
 
-async function executeAction(action: CommunicateAction): Promise<string> {
+/** Returns the DIDs of all accounts targeted by a set of actions. */
+function collectTargetDids(actions: CommunicateAction[]): string[] {
+  const dids = new Set<string>();
+  for (const a of actions) {
+    switch (a.action) {
+      case "reply":   dids.add(extractDid(a.postUri)); break;
+      case "dm":
+      case "follow":  dids.add(a.did); break;
+      case "unfollow": dids.add(extractDid(a.followUri)); break;
+      case "like":
+      case "repost":  dids.add(extractDid(a.uri)); break;
+    }
+  }
+  return [...dids];
+}
+
+/** Returns a markdown link like `[@handle (Display Name)](profile-url)` for a DID. */
+function profileLink(did: string, profiles: Map<string, BlueskyProfile>): string {
+  const p = profiles.get(did);
+  if (!p) return `[${did}](${didToWebUrl(did)})`;
+  const label = p.displayName ? `@${p.handle} (${p.displayName})` : `@${p.handle}`;
+  return `[${label}](${didToWebUrl(did)})`;
+}
+
+async function executeAction(action: CommunicateAction, profiles: Map<string, BlueskyProfile>): Promise<string> {
   switch (action.action) {
     case "post": {
       const result = await bluesky.post(action.text);
@@ -66,11 +90,11 @@ async function executeAction(action: CommunicateAction): Promise<string> {
     case "reply": {
       const rootUri = action.rootUri ?? action.postUri;
       const rootCid = action.rootCid ?? action.postCid;
+      const authorDid = extractDid(action.postUri);
       if (!CONFIG.allowReplyToNonFollowers) {
-        const authorDid = extractDid(action.postUri);
         const followed = await bluesky.isFollowedBy(authorDid);
         if (!followed) {
-          return `Skipped reply to [post](${atUriToWebUrl(action.postUri)}) — author does not follow us`;
+          return `Skipped reply to ${profileLink(authorDid, profiles)} — author does not follow us`;
         }
       }
       const result = await bluesky.reply(
@@ -80,27 +104,26 @@ async function executeAction(action: CommunicateAction): Promise<string> {
         rootUri,
         rootCid,
       );
-      const targetLink = `[post](${atUriToWebUrl(action.postUri)})`;
       const replyLink = result.uri !== "dry-run" ? ` ([view reply](${atUriToWebUrl(result.uri)}))` : "";
-      return `Replied to ${targetLink}: "${action.text}"${replyLink}`;
+      return `Replied to ${profileLink(authorDid, profiles)} ([post](${atUriToWebUrl(action.postUri)})): "${action.text}"${replyLink}`;
     }
     case "dm":
       await bluesky.sendDM(action.did, action.text);
-      return `DM to [${action.did}](${didToWebUrl(action.did)}): "${action.text}"`;
+      return `DM to ${profileLink(action.did, profiles)}: "${action.text}"`;
     case "follow":
       await bluesky.follow(action.did);
-      return `Followed [${action.did}](${didToWebUrl(action.did)})`;
+      return `Followed ${profileLink(action.did, profiles)}`;
     case "unfollow": {
       await bluesky.unfollow(action.followUri);
       const did = extractDid(action.followUri);
-      return `Unfollowed [${did}](${didToWebUrl(did)})`;
+      return `Unfollowed ${profileLink(did, profiles)}`;
     }
     case "like":
       await bluesky.like(action.uri, action.cid);
-      return `Liked [post](${atUriToWebUrl(action.uri)})`;
+      return `Liked [post](${atUriToWebUrl(action.uri)}) by ${profileLink(extractDid(action.uri), profiles)}`;
     case "repost":
       await bluesky.repost(action.uri, action.cid);
-      return `Reposted [post](${atUriToWebUrl(action.uri)})`;
+      return `Reposted [post](${atUriToWebUrl(action.uri)}) by ${profileLink(extractDid(action.uri), profiles)}`;
   }
 }
 
@@ -160,11 +183,17 @@ export async function communicate(): Promise<void> {
 
   // Parse and execute actions
   const actions = parseActions(response);
+
+  // Batch-fetch profiles for all target accounts so log entries include names
+  const targetDids = collectTargetDids(actions);
+  const targetProfiles = targetDids.length > 0 ? await bluesky.getProfiles(targetDids) : [];
+  const profileMap = new Map(targetProfiles.map((p) => [p.did, p]));
+
   const actionLog: string[] = [];
 
   for (const action of actions) {
     try {
-      const result = await executeAction(action);
+      const result = await executeAction(action, profileMap);
       actionLog.push(result);
     } catch (err) {
       const body = JSON.stringify(action);
