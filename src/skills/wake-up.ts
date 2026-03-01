@@ -13,9 +13,9 @@ Right now, your identity file is blank. A human is here to help you define your 
 
 Have a natural conversation. Ask questions. Be curious about what kind of agent the human envisions, but also assert your own preferences as they emerge. Push back if something doesn't feel right. This is a collaboration, not an instruction session.
 
-When the conversation feels complete, the human will say they're done. Don't rush to get there — take the time you need.
+Keep your responses conversational and concise. Don't monologue.
 
-Keep your responses conversational and concise. Don't monologue.`;
+When you feel the conversation has covered enough ground to define a meaningful identity, end your response with the exact marker [READY] on its own line. The human will then be asked to confirm. If they have more to add, the conversation continues. Don't use this marker until you genuinely feel you have enough to work with.`;
 
 const IDENTITY_SYNTHESIS_PROMPT = `You just had a conversation with a human to define your initial identity. Based on that conversation, write your identity.md file.
 
@@ -35,11 +35,10 @@ function isBlankIdentity(content: string): boolean {
   return stripped.length === 0;
 }
 
-function prompt(rl: ReturnType<typeof createInterface>, query: string): Promise<string> {
-  return new Promise((resolve) => {
-    rl.question(query, (answer) => {
-      resolve(answer);
-    });
+function askUser(rl: ReturnType<typeof createInterface>, query: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    rl.question(query, (answer) => resolve(answer));
+    rl.once("close", () => reject(new Error("readline closed")));
   });
 }
 
@@ -53,28 +52,23 @@ async function initializeIdentity(): Promise<string> {
   console.log("\n========================================");
   console.log("  Identity file is blank.");
   console.log("  Starting initialization conversation.");
-  console.log("  Type 'done' when finished.");
   console.log("========================================\n");
 
   const conversationHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
 
-  // Get the agent's opening message
-  const opening = await callSkill(IDENTITY_INIT_PROMPT, "The conversation is starting now. Introduce yourself and begin exploring who you might become.", {
-    model: CONFIG.anthropic.modelDeep,
-  });
+  const opening = await callSkill(
+    IDENTITY_INIT_PROMPT,
+    "The conversation is starting now. Introduce yourself and begin exploring who you might become.",
+    { model: CONFIG.anthropic.modelDeep },
+  );
 
-  console.log(`\nAgent: ${opening}\n`);
-  conversationHistory.push({ role: "assistant", content: opening });
+  const openingClean = opening.replace(/\[READY\]\s*$/, "").trim();
+  console.log(`\nAgent: ${openingClean}\n`);
+  conversationHistory.push({ role: "assistant", content: openingClean });
 
-  // Conversation loop
   try {
     while (true) {
-      const input = await prompt(rl, "You: ");
-
-      if (input.toLowerCase().trim() === "done") {
-        break;
-      }
-
+      const input = await askUser(rl, "You: ");
       conversationHistory.push({ role: "user", content: input });
 
       const messages = conversationHistory
@@ -87,8 +81,19 @@ async function initializeIdentity(): Promise<string> {
         { model: CONFIG.anthropic.modelDeep },
       );
 
-      console.log(`\nAgent: ${response}\n`);
-      conversationHistory.push({ role: "assistant", content: response });
+      const agentReady = response.includes("[READY]");
+      const responseClean = response.replace(/\[READY\]\s*$/, "").trim();
+
+      console.log(`\nAgent: ${responseClean}\n`);
+      conversationHistory.push({ role: "assistant", content: responseClean });
+
+      if (agentReady) {
+        const confirm = await askUser(rl, "Ready to finalize identity? (yes/no): ");
+        if (confirm.toLowerCase().trim().startsWith("y")) {
+          break;
+        }
+        console.log("\nOk, let's keep going.\n");
+      }
     }
   } finally {
     rl.close();

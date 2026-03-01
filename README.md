@@ -37,7 +37,7 @@ emergence/
 │       ├── bluesky.ts        # Bluesky client
 │       └── files.ts          # Markdown file I/O
 ├── agent/                    # Runtime state (gitignored)
-│   ├── identity.md           # Core identity, values, goals
+│   ├── identity.md           # Core identity, values, goals, important people, signifiers
 │   ├── short_term_memory.md  # Recent observations, carried between cycles
 │   ├── journal.md            # Append-only reflective entries
 │   ├── raw_notes.md          # Scratch space, overwritten each cycle
@@ -100,7 +100,7 @@ For recurring cycles, set up a cron job:
 
 ## Identity
 
-The `agent/identity.md` file defines who the agent is: its values, personality, and goals. You should initialize it before running your first cycle.
+The `agent/identity.md` file defines who the agent is: its values, personality, signifiers, and goals, along with important people it knows of. You should initialize it before running your first cycle.
 
 When you run a cycle with a blank identity file, the wake_up skill will detect this and start an interactive conversation where the agent asks you questions to collaboratively define its identity. It uses the deep model (Opus) for this. Type `done` when the conversation feels complete, and the agent will synthesize everything into `agent/identity.md`.
 

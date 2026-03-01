@@ -1,5 +1,6 @@
 import { readAgentFile, writeAgentFile, appendAgentFile, readPromptFile } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
+import * as bluesky from "../lib/bluesky.js";
 import type { IterateChange } from "../types.js";
 import { CONFIG } from "../config.js";
 
@@ -24,6 +25,81 @@ function parseChanges(response: string): IterateChange[] {
   return changes;
 }
 
+async function applyChange(change: IterateChange): Promise<string> {
+  switch (change.change) {
+    case "identity": {
+      const current = await readAgentFile("identity.md");
+      // Ask the model to apply the section edit to the current identity file
+      const updated = await callSkill(
+        "You are editing an identity file. Apply the proposed change to the specified section. Return ONLY the complete updated file content, nothing else.",
+        `## Current identity.md\n\n${current}\n\n## Change to apply\nSection: ${change.section}\nProposal: ${change.proposal}`,
+        { model: CONFIG.anthropic.modelDeep },
+      );
+      await writeAgentFile("identity.md", updated);
+      console.log(`  [iterate] Updated identity.md (${change.section})`);
+      return `Applied identity change (${change.section}): ${change.reason}`;
+    }
+
+    case "prompt": {
+      const filename = `${change.skill}.md`;
+      const current = await readPromptFile(filename);
+      const updated = await callSkill(
+        "You are editing a skill prompt file. Apply the proposed change. Return ONLY the complete updated file content, nothing else.",
+        `## Current ${filename}\n\n${current}\n\n## Change to apply\n${change.proposal}`,
+        { model: CONFIG.anthropic.modelDeep },
+      );
+      // Write to prompts/ directory via the full path
+      const { writeFile } = await import("fs/promises");
+      const { join } = await import("path");
+      await writeFile(join(CONFIG.paths.prompts, filename), updated, "utf-8");
+      console.log(`  [iterate] Updated prompt: ${filename}`);
+      return `Applied prompt change (${change.skill}): ${change.reason}`;
+    }
+
+    case "profile": {
+      // Profile changes are freeform text describing what to update.
+      // Parse it for known fields and apply what we can.
+      const text = change.text.toLowerCase();
+
+      // Try to extract a bio update
+      const bioMatch = change.text.match(/bio:\s*"([^"]+)"/i) ||
+        change.text.match(/description:\s*"([^"]+)"/i);
+      const nameMatch = change.text.match(/display\s*name:\s*"([^"]+)"/i) ||
+        change.text.match(/name:\s*"([^"]+)"/i);
+      const handleMatch = change.text.match(/handle:\s*"?([a-zA-Z0-9.-]+\.bsky\.social)"?/i);
+
+      const profileUpdates: { description?: string; displayName?: string } = {};
+      const applied: string[] = [];
+
+      if (bioMatch) {
+        profileUpdates.description = bioMatch[1];
+        applied.push(`bio: "${bioMatch[1]}"`);
+      }
+      if (nameMatch) {
+        profileUpdates.displayName = nameMatch[1];
+        applied.push(`display name: "${nameMatch[1]}"`);
+      }
+
+      if (Object.keys(profileUpdates).length > 0) {
+        await bluesky.updateProfile(profileUpdates);
+      }
+      if (handleMatch) {
+        await bluesky.updateHandle(handleMatch[1]);
+        applied.push(`handle: ${handleMatch[1]}`);
+      }
+
+      if (applied.length === 0) {
+        // Couldn't parse specific fields — log the raw proposal
+        console.log(`  [iterate] Could not parse profile change: "${change.text}"`);
+        return `Profile change proposed but not applied (could not parse): "${change.text}" — ${change.reason}`;
+      }
+
+      console.log(`  [iterate] Updated profile: ${applied.join(", ")}`);
+      return `Applied profile update (${applied.join(", ")}): ${change.reason}`;
+    }
+  }
+}
+
 export async function iterate(): Promise<void> {
   console.log("[iterate] Starting...");
 
@@ -45,24 +121,35 @@ export async function iterate(): Promise<void> {
     model: CONFIG.anthropic.modelDeep,
   });
 
-  // Parse proposed changes
+  // Parse and apply changes
   const changes = parseChanges(response);
   const changeLog: string[] = [];
 
   for (const change of changes) {
-    let desc: string;
-    switch (change.change) {
-      case "profile":
-        desc = `Profile update: "${change.text}" — ${change.reason}`;
-        break;
-      case "identity":
-        desc = `Identity change (${change.section}): ${change.reason}`;
-        break;
-      case "prompt":
-        desc = `Prompt change (${change.skill}): ${change.reason}`;
-        break;
+    if (CONFIG.dryRun) {
+      let desc: string;
+      switch (change.change) {
+        case "profile":
+          desc = `Profile update: "${change.text}" — ${change.reason}`;
+          break;
+        case "identity":
+          desc = `Identity change (${change.section}): ${change.reason}`;
+          break;
+        case "prompt":
+          desc = `Prompt change (${change.skill}): ${change.reason}`;
+          break;
+      }
+      changeLog.push(desc);
+    } else {
+      try {
+        const result = await applyChange(change);
+        changeLog.push(result);
+      } catch (err) {
+        const desc = `Failed to apply ${change.change} change: ${err}`;
+        console.error(`  [iterate] ${desc}`);
+        changeLog.push(desc);
+      }
     }
-    changeLog.push(desc);
   }
 
   if (changes.length === 0) {
@@ -82,5 +169,5 @@ export async function iterate(): Promise<void> {
     console.log("[iterate] Updated mindset.md");
   }
 
-  console.log(`[iterate] ${changes.length} changes proposed`);
+  console.log(`[iterate] ${changes.length} changes ${CONFIG.dryRun ? "proposed" : "applied"}`);
 }
