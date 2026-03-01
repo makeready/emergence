@@ -14,17 +14,24 @@ const CHAT_PROXY_HEADER = {
 };
 
 let agent: BskyAgent | null = null;
+let loginPromise: Promise<BskyAgent> | null = null;
 
 export async function login(): Promise<BskyAgent> {
   if (agent) return agent;
+  if (loginPromise) return loginPromise;
 
-  agent = new BskyAgent({ service: CONFIG.bluesky.service });
-  await agent.login({
-    identifier: CONFIG.bluesky.handle,
-    password: CONFIG.bluesky.appPassword,
-  });
-  console.log(`  [bluesky] Logged in as ${CONFIG.bluesky.handle}`);
-  return agent;
+  loginPromise = (async () => {
+    const bsky = new BskyAgent({ service: CONFIG.bluesky.service });
+    await bsky.login({
+      identifier: CONFIG.bluesky.handle,
+      password: CONFIG.bluesky.appPassword,
+    });
+    console.log(`  [bluesky] Logged in as ${CONFIG.bluesky.handle}`);
+    agent = bsky;
+    return bsky;
+  })();
+
+  return loginPromise;
 }
 
 // ---------------------------------------------------------------------------
