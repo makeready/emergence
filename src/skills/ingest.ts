@@ -130,31 +130,18 @@ function parseUnreadableUris(response: string): string[] {
   return [...new Set(section[1].match(uriPattern) || [])];
 }
 
-/** Parse the most recent timestamp from the journal to use as a cutoff. */
-function getLastCycleTime(journal: string): string | undefined {
-  const timestamps = [...journal.matchAll(/### .+ — (\d{4}-\d{2}-\d{2}T[\d:.]+Z)/g)];
-  if (timestamps.length === 0) return undefined;
-  return timestamps[timestamps.length - 1][1];
-}
-
 export async function ingest(): Promise<void> {
   console.log("[ingest] Starting...");
 
-  const [systemPrompt, mindset, journal] = await Promise.all([
+  const [systemPrompt, mindset] = await Promise.all([
     readPromptFile("ingest.md"),
     readAgentFile("mindset.md"),
-    readAgentFile("journal.md"),
   ]);
-
-  const lastCycleTime = getLastCycleTime(journal);
-  if (lastCycleTime) {
-    console.log(`[ingest] Last cycle: ${lastCycleTime} — skipping older posts`);
-  }
 
   // Fetch social data + own profile
   console.log("[ingest] Fetching timeline, notifications, DMs, and own profile...");
   const [timeline, notifications, dms, ownProfile] = await Promise.all([
-    getTimeline(CONFIG.timelineLimit, CONFIG.timelinePages, lastCycleTime),
+    getTimeline(),
     getNotifications(),
     getDMs(),
     getProfile(CONFIG.bluesky.handle),
