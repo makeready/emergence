@@ -164,6 +164,16 @@ export async function ingest(): Promise<void> {
     `[ingest] Got ${timeline.length} posts (${imageCount} images), ${notifications.length} notifications, ${dms.length} DMs`,
   );
 
+  // Fetch the agent's own posts that were liked/reposted/replied to
+  const subjectUris = [...new Set(
+    notifications.map((n) => n.subjectUri).filter((u): u is string => !!u),
+  )];
+  const subjectPostsList = await getPosts(subjectUris);
+  const subjectPosts = new Map(subjectPostsList.map((p) => [p.uri, p]));
+  if (subjectUris.length > 0) {
+    console.log(`[ingest] Fetched ${subjectPostsList.length} subject posts for notification context`);
+  }
+
   // Collect all unique DIDs seen this cycle for people file lookup
   const ingestDids = [
     ...new Set([
@@ -178,7 +188,7 @@ export async function ingest(): Promise<void> {
     "## Current Mindset\n\n" + mindset,
     "## Your Profile\n\n" + formatProfile(ownProfile),
     "## Timeline\n\n" + formatPosts(timeline),
-    "## Notifications\n\n" + formatNotifications(notifications),
+    "## Notifications\n\n" + formatNotifications(notifications, subjectPosts),
     "## Direct Messages\n\n" + formatDMs(dms),
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your updated mindset)\n\n## Raw Notes\n(your detailed notes)\n\nIf any images contain text you cannot read at this size, add a third section:\n\n## Unreadable Image Text\n(list the post URIs with unreadable text)',
   ].join("\n\n---\n\n");
