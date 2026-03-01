@@ -57,46 +57,29 @@ async function applyChange(change: IterateChange): Promise<string> {
     }
 
     case "profile": {
-      // Profile changes are freeform text describing what to update.
-      // Parse it for known fields and apply what we can.
-      const text = change.text.toLowerCase();
-
-      // Try to extract a bio update
-      const bioMatch = change.text.match(/bio:\s*"([^"]+)"/i) ||
-        change.text.match(/description:\s*"([^"]+)"/i) ||
-        change.text.match(/bio:\s*([^\n,;]+)/i) ||
-        change.text.match(/description:\s*([^\n,;]+)/i);
-      const nameMatch = change.text.match(/display\s*name:\s*"([^"]+)"/i) ||
-        change.text.match(/name:\s*"([^"]+)"/i) ||
-        change.text.match(/display\s*name:\s*([^\n,;]+)/i);
-      const handleMatch = change.text.match(/handle:\s*"?([a-zA-Z0-9.-]+\.bsky\.social)"?/i);
-
-      const profileUpdates: { description?: string; displayName?: string } = {};
       const applied: string[] = [];
+      const profileUpdates: { description?: string; displayName?: string } = {};
 
-      if (bioMatch) {
-        profileUpdates.description = bioMatch[1].trim();
-        applied.push(`bio: "${profileUpdates.description}"`);
+      if (change.bio !== undefined) {
+        profileUpdates.description = change.bio;
+        applied.push(`bio: "${change.bio}"`);
       }
-      if (nameMatch) {
-        profileUpdates.displayName = nameMatch[1].trim();
-        applied.push(`display name: "${profileUpdates.displayName}"`);
+      if (change.displayName !== undefined) {
+        profileUpdates.displayName = change.displayName;
+        applied.push(`display name: "${change.displayName}"`);
       }
-
       if (Object.keys(profileUpdates).length > 0) {
         await bluesky.updateProfile(profileUpdates);
       }
-      if (handleMatch) {
-        await bluesky.updateHandle(handleMatch[1]);
-        applied.push(`handle: ${handleMatch[1]}`);
+      if (change.handle !== undefined) {
+        await bluesky.updateHandle(change.handle);
+        applied.push(`handle: ${change.handle}`);
       }
 
       const profileLink = `[view profile](https://bsky.app/profile/${CONFIG.bluesky.handle})`;
 
       if (applied.length === 0) {
-        // Couldn't parse specific fields — log the raw proposal
-        console.log(`  [iterate] Could not parse profile change: "${change.text}"`);
-        return `Profile change proposed but not applied (could not parse): "${change.text}" — ${change.reason} (${profileLink})`;
+        return `Profile change proposed but no recognized fields: ${change.reason} (${profileLink})`;
       }
 
       console.log(`  [iterate] Updated profile: ${applied.join(", ")}`);
@@ -134,9 +117,15 @@ export async function iterate(): Promise<void> {
     if (CONFIG.dryRun) {
       let desc: string;
       switch (change.change) {
-        case "profile":
-          desc = `Profile update: "${change.text}" — ${change.reason}`;
+        case "profile": {
+          const fields = [
+            change.bio !== undefined && `bio: "${change.bio}"`,
+            change.displayName !== undefined && `display name: "${change.displayName}"`,
+            change.handle !== undefined && `handle: ${change.handle}`,
+          ].filter(Boolean).join(", ");
+          desc = `Profile update (${fields || "no fields"}): ${change.reason}`;
           break;
+        }
         case "identity":
           desc = `Identity change (${change.section}): ${change.reason}`;
           break;

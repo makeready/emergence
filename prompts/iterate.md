@@ -16,8 +16,10 @@ Step back and reflect on your own development. Look at your identity, your recen
 ```json
 {"change": "identity", "section": "goals", "proposal": "new text for this section", "reason": "why this change matters"}
 {"change": "prompt", "skill": "communicate", "proposal": "suggested edit", "reason": "why"}
-{"change": "profile", "text": "profile information (e.g. profile picture, display name, handle)", "reason": "why"}
+{"change": "profile", "displayName": "new display name", "bio": "new bio text", "handle": "new-handle.bsky.social", "reason": "why"}
 ```
+
+All `profile` fields (`displayName`, `bio`, `handle`) are optional — include only what you want to change.
 
 ## Guidelines
 
