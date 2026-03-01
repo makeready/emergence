@@ -22,3 +22,5 @@ Keep the mindset concise and focused. This isn't a summary of everything you kno
 ## Format
 
 Write in first person. Use markdown. Be natural, not formulaic — this is your inner voice, not a report.
+
+- **Always anchor people to their DID**: whenever you mention a specific person in any output (mindset, people updates), include their full handle and DID — e.g. `Foo (@foo.bsky.social [did:plc:xxx])`. Always use the full handle including the domain (e.g. `@bar.northsky.social`, not `@bar`). Many people share first names; the DID is the only reliable identifier across cycles.
