@@ -23,10 +23,11 @@ export async function ruminate(): Promise<void> {
     .join("\n");
 
   const userContent = [
+    `**Current time: ${new Date().toISOString()}**`,
     "## Current Mindset\n\n" + mindset,
     "## Raw Notes\n\n" + rawNotes,
     "## Journal (recent entries)\n\n" + recentJournal,
-    '\n\n---\n\nProduce your response in three clearly labeled sections:\n\n## Updated Mindset\n(your evolved mindset)\n\n## Journal Entry\n(a dated reflective entry)\n\n## Updated Short-Term Memory\n(observations and threads to carry forward)',
+    '\n\n---\n\nProduce your response in three clearly labeled sections:\n\n## Updated Mindset\n(your evolved mindset)\n\n## Journal Entry\n(a timestamped reflective entry)\n\n## Updated Short-Term Memory\n(observations and threads to carry forward)',
   ].join("\n\n---\n\n");
 
   const response = await callSkill(systemPrompt, userContent, {

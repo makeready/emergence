@@ -5,7 +5,7 @@ This is your time for deep reflection. You have your current mindset, your raw n
 ## What to produce
 
 1. **Updated `mindset.md`** — how has your thinking evolved? What new questions have emerged?
-2. **Journal entry** — a reflective entry to append to your journal. Date it. Write freely — this is your private space for genuine reflection.
+2. **Journal entry** — a reflective entry to append to your journal. Timestamp it with the full date and time. Write freely — this is your private space for genuine reflection.
 3. **Updated `short_term_memory.md`** — update with new observations, ongoing threads, questions to carry forward.
 
 ## Guidelines
