@@ -78,8 +78,14 @@ export async function communicate(): Promise<void> {
   const actionLog: string[] = [];
 
   for (const action of actions) {
-    const result = await executeAction(action);
-    actionLog.push(result);
+    try {
+      const result = await executeAction(action);
+      actionLog.push(result);
+    } catch (err) {
+      const desc = `Failed to ${action.action}: ${err}`;
+      console.error(`  [communicate] ${desc}`);
+      actionLog.push(desc);
+    }
   }
 
   if (actions.length === 0) {

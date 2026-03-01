@@ -63,21 +63,24 @@ async function applyChange(change: IterateChange): Promise<string> {
 
       // Try to extract a bio update
       const bioMatch = change.text.match(/bio:\s*"([^"]+)"/i) ||
-        change.text.match(/description:\s*"([^"]+)"/i);
+        change.text.match(/description:\s*"([^"]+)"/i) ||
+        change.text.match(/bio:\s*([^\n,;]+)/i) ||
+        change.text.match(/description:\s*([^\n,;]+)/i);
       const nameMatch = change.text.match(/display\s*name:\s*"([^"]+)"/i) ||
-        change.text.match(/name:\s*"([^"]+)"/i);
+        change.text.match(/name:\s*"([^"]+)"/i) ||
+        change.text.match(/display\s*name:\s*([^\n,;]+)/i);
       const handleMatch = change.text.match(/handle:\s*"?([a-zA-Z0-9.-]+\.bsky\.social)"?/i);
 
       const profileUpdates: { description?: string; displayName?: string } = {};
       const applied: string[] = [];
 
       if (bioMatch) {
-        profileUpdates.description = bioMatch[1];
-        applied.push(`bio: "${bioMatch[1]}"`);
+        profileUpdates.description = bioMatch[1].trim();
+        applied.push(`bio: "${profileUpdates.description}"`);
       }
       if (nameMatch) {
-        profileUpdates.displayName = nameMatch[1];
-        applied.push(`display name: "${nameMatch[1]}"`);
+        profileUpdates.displayName = nameMatch[1].trim();
+        applied.push(`display name: "${profileUpdates.displayName}"`);
       }
 
       if (Object.keys(profileUpdates).length > 0) {
