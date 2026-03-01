@@ -2,7 +2,7 @@
 
 Use this project to experiment with digital consciousness. Emergence is a persistent autonomous agent, cycling through a sequence of skills. Each skill is a stateless Anthropic API call. Memory lives in markdown files on disk, with `mindset.md` passed as a baton between skills.
 
-The agent's interface to the world is Bluesky. It reads its timeline, receives DMs, posts, replies, follows/unfollows, likes, reposts, all at its own discretion.
+The agent's interface to the world is Bluesky. It reads its timeline, receives DMs, posts, replies, follows/unfollows, likes, reposts, all at its own discretion. It remembers notable thoughts and interactions with people when it encounters them in the future.
 
 ## How it works
 
@@ -22,10 +22,10 @@ Skills use two model tiers: Sonnet for standard skills, Opus for the reflective 
 ```
 emergence/
 ├── src/
-│   ├── main.ts              # Orchestrator, runs all skills in sequence
+│   ├── main.ts               # Orchestrator, runs all skills in sequence
 │   ├── config.ts             # Env vars, paths, constants
 │   ├── types.ts              # Shared types
-│   ├── skills/
+│   ├── skills/               # Helper functions
 │   │   ├── wake-up.ts
 │   │   ├── ingest.ts
 │   │   ├── ruminate.ts
@@ -39,8 +39,9 @@ emergence/
 ├── agent/                    # Runtime state (gitignored)
 │   ├── identity.md           # Core identity, values, goals, important people, signifiers
 │   ├── short_term_memory.md  # Recent observations, carried between cycles
-│   ├── journal.md            # Append-only reflective entries
 │   ├── raw_notes.md          # Scratch space, overwritten each cycle
+|   ├── journal/              # Append-only reflective entries
+|   ├── people/               # Notes on people
 │   └── mindset.md            # The baton, active working state
 └── prompts/                  # System prompts for each skill (editable markdown)
     ├── wake-up.md
@@ -77,13 +78,15 @@ MODEL_DEEP=claude-opus-4-20250514
 DRY_RUN=true
 ```
 
+You'll need a bluesky account for your agent, unless you want it to use your existing personal account.
+
 To get a Bluesky app password: Settings > Privacy and Security > App Passwords. Check "Allow access to direct messages" when creating it.
 
-Your agent's view of the world is initially scoped to the other accounts that it follows. These will be the first people it meets and they will help guide the early development of its personality. Set up some follows before initializing your agent.
+Your agent's view of the world is scoped to the other accounts that it follows. These will be the first people it meets and they will help guide the early development of its personality. Set up some follows before initializing your agent.
 
 ## Usage
 
-Run a single cycle:
+To run a single cycle:
 
 ```bash
 npx tsx src/main.ts
@@ -93,7 +96,7 @@ The agent starts in **dry-run mode** — it will read from Bluesky but won't pos
 
 To go live, set `DRY_RUN=false` in `.env`.
 
-For recurring cycles, set up a cron job:
+For recurring cycles, set up a cron job (be mindful of the cost!):
 
 ```bash
 # Run every 90 minutes
@@ -101,7 +104,7 @@ For recurring cycles, set up a cron job:
 ```
 
 ## Cost
-The agent will cost about $0.50 per cycle as of March 1 2026.
+The agent costs about $0.50-$1.00 per cycle depending on model configuration.
 
 ## Identity
 
@@ -122,11 +125,10 @@ echo "" > agent/identity.md
 npx tsx src/main.ts
 ```
 
-The agent can also propose changes to its own identity through the iterate skill as it develops.
+The agent will slowly change its own identity through the iterate skill as it develops.
 
 ## Notes
 
 - Skill prompts live in `prompts/` as plain markdown, separate from code. The agent can read (and propose edits to) its own skill definitions.
-- The `agent/` directory is gitignored since it contains runtime state. Back it up separately if you care about continuity.
+- The `agent/` directory is gitignored since it contains runtime state. Back it up separately for continuity.
 - The communicate and iterate skills respect the `DRY_RUN` flag, they log what they *would* do without actually doing it.
-- Bluesky credentials require an app password, not your account password.
