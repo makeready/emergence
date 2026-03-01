@@ -31,8 +31,10 @@ export const CONFIG = {
   maxShortTermMemoryLines: 200,
   /** Max lines of journal to include in context */
   maxJournalContextLines: 300,
-  /** Timeline posts to fetch per cycle */
+  /** Timeline posts to fetch per page */
   timelineLimit: 50,
+  /** Number of timeline pages to fetch per cycle */
+  timelinePages: 4,
 } as const;
 
 export function validateConfig(): void {

@@ -40,11 +40,20 @@ export async function login(): Promise<BskyAgent> {
 
 export async function getTimeline(
   limit = CONFIG.timelineLimit,
+  pages = CONFIG.timelinePages,
 ): Promise<BlueskyPost[]> {
   const bsky = await login();
-  const response = await bsky.getTimeline({ limit });
+  const posts: BlueskyPost[] = [];
+  let cursor: string | undefined;
 
-  return response.data.feed.map((item) => mapPost(item.post));
+  for (let page = 0; page < pages; page++) {
+    const response = await bsky.getTimeline({ limit, cursor });
+    posts.push(...response.data.feed.map((item) => mapPost(item.post)));
+    cursor = response.data.cursor;
+    if (!cursor) break;
+  }
+
+  return posts;
 }
 
 export async function getPostThread(uri: string): Promise<BlueskyThread | null> {
