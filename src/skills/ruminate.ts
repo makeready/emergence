@@ -5,7 +5,7 @@ import {
   readRecentJournal,
   readPromptFile,
   readPeopleFiles,
-  writePeopleFile,
+  appendPeopleNotes,
   parsePeopleUpdates,
 } from "../lib/files.js";
 import { callSkill, callSkillWithTools } from "../lib/anthropic.js";
@@ -16,12 +16,13 @@ import { CONFIG } from "../config.js";
 export async function ruminate(): Promise<void> {
   console.log("[ruminate] Starting...");
 
-  const [systemPrompt, mindset, rawNotes, recentJournal, ingestDidsRaw] = await Promise.all([
+  const [systemPrompt, mindset, rawNotes, recentJournal, ingestDidsRaw, agentReadme] = await Promise.all([
     readPromptFile("ruminate.md"),
     readAgentFile("mindset.md"),
     readAgentFile("raw_notes.md"),
     readRecentJournal(CONFIG.maxJournalContextLines),
     readAgentFile("ingest_dids.json"),
+    readAgentFile("README.md"),
   ]);
 
   let ingestDids: string[] = [];
@@ -37,12 +38,14 @@ export async function ruminate(): Promise<void> {
     ? await Promise.all([listTopics(), getVisitedLinks()])
     : [[], []];
 
-  const contextParts = [
+  const contextParts: string[] = [];
+  if (agentReadme) contextParts.push(agentReadme);
+  contextParts.push(
     `**Current time: ${new Date().toISOString()}**`,
     "## Current Mindset\n\n" + mindset,
     "## Raw Notes\n\n" + rawNotes,
     "## Journal (recent entries)\n\n" + recentJournal,
-  ];
+  );
   if (peopleSection) contextParts.push(peopleSection);
   if (CONFIG.webSearch) {
     contextParts.push(
@@ -127,11 +130,18 @@ export async function ruminate(): Promise<void> {
     await appendToJournal("\n\n" + journalMatch[1].trim());
     console.log("[ruminate] Appended to journal");
   }
-  // Write any people updates the model produced
+  // Append any people updates the model produced
+  const condenser = async (entries: string, header: string) => {
+    return await callSkill(
+      "Condense these timestamped observations about a person into 1-3 sentences. Preserve key facts: who they are, relationship dynamics, important topics, and notable traits. Be specific.",
+      `${header}\n\nObservations to condense:\n${entries}`,
+      { maxTokens: 256 },
+    );
+  };
   const peopleUpdates = parsePeopleUpdates(response);
-  for (const [did, content] of Object.entries(peopleUpdates)) {
-    await writePeopleFile(did, content);
-    console.log(`[ruminate] Updated people file for ${did}`);
+  for (const [did, update] of Object.entries(peopleUpdates)) {
+    await appendPeopleNotes(did, update.notes, update.heading, condenser);
+    console.log(`[ruminate] Appended people notes for ${did}`);
   }
 
   if (memoryMatch) {

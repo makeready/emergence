@@ -93,20 +93,23 @@ async function applyChange(change: IterateChange): Promise<string> {
 export async function iterate(): Promise<void> {
   console.log("[iterate] Starting...");
 
-  const [systemPrompt, mindset, identity, shortTermMemory] = await Promise.all([
+  const [systemPrompt, mindset, identity, shortTermMemory, agentReadme] = await Promise.all([
     readPromptFile("iterate.md"),
     readAgentFile("mindset.md"),
     readAgentFile("identity.md"),
     readShortTermMemory(),
+    readAgentFile("README.md"),
   ]);
 
   const topics = CONFIG.webSearch ? await listTopics() : [];
 
-  const contentParts = [
+  const contentParts: string[] = [];
+  if (agentReadme) contentParts.push(agentReadme);
+  contentParts.push(
     "## Current Mindset\n\n" + mindset,
     "## Identity\n\n" + identity,
     "## Short-Term Memory\n\n" + shortTermMemory,
-  ];
+  );
   if (CONFIG.webSearch) {
     contentParts.push(
       "## Topics You Have Researched\n\n" + (topics.length > 0 ? topics.join("\n") : "_None yet._"),

@@ -11,7 +11,7 @@ Step back and reflect on your own development. Look at your identity, your recen
 ## What to produce
 
 1. **Updated `mindset.md`** — your reflections on your own evolution
-2. **Proposed changes** (optional) — if you feel strongly that something should change, propose it as structured JSON:
+2. **Changes** (optional) — if you feel strongly that something should change, log it as structured JSON:
 
 ```json
 {"change": "identity", "section": "goals", "proposal": "new text for this section", "reason": "why this change matters"}

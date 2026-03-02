@@ -22,6 +22,107 @@ export async function writePeopleFile(did: string, content: string): Promise<voi
   await fsWrite(path, content, "utf-8");
 }
 
+/** Max recent notes before triggering condensation. */
+const MAX_PEOPLE_NOTES = 10;
+/** Notes to keep after condensation. */
+const NOTES_TO_KEEP = 3;
+
+interface PeopleFileStructure {
+  header: string;
+  condensed: string[];
+  notes: string[];
+}
+
+/** Parse a structured people file into its sections. */
+function parsePeopleFileStructure(content: string): PeopleFileStructure {
+  const headerMatch = content.match(/^(# .+)/);
+  const header = headerMatch ? headerMatch[1] : "";
+
+  let section: "pre" | "condensed" | "notes" = "pre";
+  const condensed: string[] = [];
+  const notes: string[] = [];
+
+  for (const line of content.split("\n")) {
+    if (line.startsWith("## Condensed")) { section = "condensed"; continue; }
+    if (line.startsWith("## Notes")) { section = "notes"; continue; }
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (section === "condensed" && trimmed.startsWith("- ")) condensed.push(trimmed);
+    if (section === "notes" && trimmed.startsWith("- ")) notes.push(trimmed);
+  }
+
+  return { header, condensed, notes };
+}
+
+function serializePeopleFile(s: PeopleFileStructure): string {
+  return [s.header, "", "## Condensed", ...s.condensed, "", "## Notes", ...s.notes, ""].join("\n");
+}
+
+/**
+ * Condenser callback type: given a list of note entries and the person's header,
+ * returns a 1-3 sentence summary.
+ */
+export type PeopleCondenser = (entries: string, header: string) => Promise<string>;
+
+/**
+ * Appends a timestamped observation to a person's file.
+ * Creates the file with proper structure if it doesn't exist.
+ * Migrates legacy (unstructured) files on first append.
+ * If a condenser is provided and recent notes exceed the threshold,
+ * condenses older entries into a permanent summary.
+ */
+export async function appendPeopleNotes(
+  did: string,
+  notes: string,
+  heading?: string,
+  condenser?: PeopleCondenser,
+): Promise<void> {
+  const path = join(CONFIG.paths.agent, "people", didToFilename(did));
+  await mkdir(dirname(path), { recursive: true });
+
+  let existing = "";
+  try {
+    existing = await fsRead(path, "utf-8");
+  } catch { /* new file */ }
+
+  const timestamp = new Date().toISOString();
+  const entry = `- [${timestamp}] ${notes.replace(/\n+/g, " ").trim()}`;
+
+  let content: string;
+  if (!existing) {
+    const h = heading ? `${heading}\n\n` : "";
+    content = `${h}## Condensed\n\n## Notes\n${entry}\n`;
+  } else if (!existing.includes("## Notes")) {
+    // Legacy file — migrate: keep header, move old content to Condensed
+    const headerMatch = existing.match(/^(# .+)\n/);
+    const h = headerMatch ? headerMatch[1] + "\n\n" : "";
+    const oldContent = existing.replace(/^# .+\n+/, "").trim();
+    const legacyEntry = oldContent ? `- [migrated] ${oldContent.replace(/\n+/g, " ")}\n` : "";
+    content = `${h}## Condensed\n${legacyEntry}\n## Notes\n${entry}\n`;
+  } else {
+    content = existing.trimEnd() + "\n" + entry + "\n";
+  }
+
+  await fsWrite(path, content, "utf-8");
+
+  // Condense if needed
+  if (condenser) {
+    const structure = parsePeopleFileStructure(content);
+    if (structure.notes.length > MAX_PEOPLE_NOTES) {
+      const toCondense = structure.notes.slice(0, -NOTES_TO_KEEP);
+      const toKeep = structure.notes.slice(-NOTES_TO_KEEP);
+
+      const summary = await condenser(toCondense.join("\n"), structure.header);
+      const date = new Date().toISOString().slice(0, 10);
+      structure.condensed.push(`- [${date}] ${summary.replace(/\n+/g, " ").trim()}`);
+      structure.notes = toKeep;
+
+      await fsWrite(path, serializePeopleFile(structure), "utf-8");
+      console.log(`  [people] Condensed notes for ${did} (${toCondense.length} entries → summary)`);
+    }
+  }
+}
+
 export async function readAllPeopleFiles(): Promise<Record<string, string>> {
   const dir = join(CONFIG.paths.agent, "people");
   let files: string[];
@@ -56,13 +157,19 @@ export async function readPeopleFiles(dids: string[]): Promise<Record<string, st
   return result;
 }
 
+export interface PeopleUpdate {
+  notes: string;
+  /** The heading line, e.g. "# @alice.bsky.social (Alice)" — used for new files */
+  heading: string;
+}
+
 /**
  * Parses a `## People Updates` section from model output.
- * Each `### did:xxx (@handle)` subheading introduces a person's file content.
- * Returns a map of DID → full new file content.
+ * Each `### did:xxx (@handle)` subheading introduces new observations about a person.
+ * Returns a map of DID → { notes, heading }.
  */
-export function parsePeopleUpdates(text: string): Record<string, string> {
-  const result: Record<string, string> = {};
+export function parsePeopleUpdates(text: string): Record<string, PeopleUpdate> {
+  const result: Record<string, PeopleUpdate> = {};
   const sectionMatch = text.match(/## People Updates\n([\s\S]*?)(?=\n## |\n*$)/);
   if (!sectionMatch) return result;
 
@@ -72,10 +179,17 @@ export function parsePeopleUpdates(text: string): Record<string, string> {
     const didMatch = part.match(/did:[^\s)]+/);
     if (!didMatch) continue;
     const did = didMatch[0];
+    // Extract @handle from heading: "### did:plc:xxx (@handle)" or "### did:plc:xxx (@handle) (Display Name)"
+    const headingLine = part.slice(0, part.indexOf("\n") === -1 ? undefined : part.indexOf("\n")).trim();
+    const handleMatch = headingLine.match(/@[\w.-]+/);
+    const nameMatch = headingLine.match(/\(([^)]*)\)\s*$/);
+    const heading = handleMatch
+      ? `# ${handleMatch[0]}${nameMatch ? ` (${nameMatch[1]})` : ""}`
+      : "";
     const firstNewline = part.indexOf("\n");
     if (firstNewline === -1) continue;
     const content = part.slice(firstNewline + 1).trim();
-    if (content) result[did] = content;
+    if (content) result[did] = { notes: content, heading };
   }
   return result;
 }

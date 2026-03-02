@@ -5,6 +5,7 @@ dist/
 
 # Agent runtime state (keep templates, ignore live state)
 agent/*.md
+!agent/README.md
 agent/journal/
 agent/journal/*.md
 agent/.DS_Store

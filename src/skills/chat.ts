@@ -14,19 +14,22 @@ function prompt(rl: readline.Interface, query: string): Promise<string> {
 export async function chat(): Promise<void> {
   console.log("[chat] Starting...");
 
-  const [systemPrompt, identity, mindset, shortTermMemory] = await Promise.all([
+  const [systemPrompt, identity, mindset, shortTermMemory, agentReadme] = await Promise.all([
     readPromptFile("chat.md"),
     readAgentFile("identity.md"),
     readAgentFile("mindset.md"),
     readShortTermMemory(),
+    readAgentFile("README.md"),
   ]);
 
-  const system = [
-    systemPrompt,
+  const systemParts: string[] = [systemPrompt];
+  if (agentReadme) systemParts.push(agentReadme);
+  systemParts.push(
     "## Identity\n\n" + identity,
     "## Current Mindset\n\n" + mindset,
     "## Short-Term Memory\n\n" + shortTermMemory,
-  ].join("\n\n---\n\n");
+  );
+  const system = systemParts.join("\n\n---\n\n");
 
   const messages: Message[] = [];
 

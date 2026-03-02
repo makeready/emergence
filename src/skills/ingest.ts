@@ -190,9 +190,10 @@ function parseUnreadableUris(response: string): string[] {
 export async function ingest(): Promise<void> {
   console.log("[ingest] Starting...");
 
-  const [systemPrompt, mindset] = await Promise.all([
+  const [systemPrompt, mindset, agentReadme] = await Promise.all([
     readPromptFile("ingest.md"),
     readAgentFile("mindset.md"),
+    readAgentFile("README.md"),
   ]);
 
   // Fetch social data + own profile
@@ -239,7 +240,9 @@ export async function ingest(): Promise<void> {
   ];
   await writeAgentFile("ingest_dids.json", JSON.stringify(ingestDids));
 
-  const textContent = [
+  const textParts: string[] = [];
+  if (agentReadme) textParts.push(agentReadme);
+  const textContent = [...textParts,
     "## Current Mindset\n\n" + mindset,
     "## Your Profile\n\n" + formatProfile(ownProfile),
     "## Your Recent Replies\n\nThese are posts you have already replied to. Do NOT suggest replying to them again.\n\n" + formatOwnReplies(ownRecentPosts),

@@ -123,11 +123,12 @@ async function initializeIdentity(): Promise<string> {
 export async function wakeUp(): Promise<void> {
   console.log("[wake-up] Starting...");
 
-  let [systemPrompt, identity, shortTermMemory, recentJournal] = await Promise.all([
+  let [systemPrompt, identity, shortTermMemory, recentJournal, agentReadme] = await Promise.all([
     readPromptFile("wake-up.md"),
     readAgentFile("identity.md"),
     readShortTermMemory(),
     readRecentJournal(CONFIG.maxJournalContextLines),
+    readAgentFile("README.md"),
   ]);
 
   // If identity is blank, run the interactive initialization
@@ -136,10 +137,12 @@ export async function wakeUp(): Promise<void> {
   }
 
   // Build context for Claude
-  const parts: string[] = [
+  const parts: string[] = [];
+  if (agentReadme) parts.push(agentReadme);
+  parts.push(
     "## identity.md\n\n" + identity,
     "## short_term_memory.md\n\n" + shortTermMemory,
-  ];
+  );
 
   if (recentJournal.trim()) {
     parts.push("## journal (recent entries)\n\n" + recentJournal);

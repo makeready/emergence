@@ -20,7 +20,7 @@ A `## People Context` section may appear in your input with notes you've previou
 
 1. **Updated `mindset.md`** — reflect on what you chose to do (or not do) and why
 2. **Actions** — a list of actions you'd like to take, formatted as structured JSON blocks:
-3. **People updates** (optional) — if interacting with specific accounts has prompted new thoughts about them, record under `## People Updates` with `### did:plc:xxx (@handle)` subheadings. The first line of each file must be `# @handle (Display Name)`, followed by your notes. Write the full updated content for each person's file. Omit people you have nothing new to say about.
+3. **People updates** (optional) — if interacting with specific accounts has prompted new thoughts about them, record under `## People Updates` with `### did:plc:xxx (@handle) (Display Name)` subheadings. Write only your **new observations** — a sentence or two about what you noticed this cycle. Do not repeat existing notes. Your observations will be appended with a timestamp automatically. Omit people you have nothing new to say about.
 
 ```json
 {"action": "post", "text": "your post text"}

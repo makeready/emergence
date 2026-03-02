@@ -1,4 +1,4 @@
-import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readPeopleFiles, writePeopleFile, parsePeopleUpdates } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readPeopleFiles, appendPeopleNotes, parsePeopleUpdates } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
 import * as bluesky from "../lib/bluesky.js";
 import type { CommunicateAction, BlueskyProfile } from "../types.js";
@@ -159,12 +159,13 @@ function formatFollowerProfile(p: BlueskyProfile): string {
 export async function communicate(): Promise<void> {
   console.log("[communicate] Starting...");
 
-  const [systemPrompt, mindset, ownProfile, notifications, ingestDidsRaw] = await Promise.all([
+  const [systemPrompt, mindset, ownProfile, notifications, ingestDidsRaw, agentReadme] = await Promise.all([
     readPromptFile("communicate.md"),
     readAgentFile("mindset.md"),
     bluesky.getProfile(CONFIG.bluesky.handle),
     bluesky.getNotifications(),
     readAgentFile("ingest_dids.json"),
+    readAgentFile("README.md"),
   ]);
 
   // Find accounts that followed us but we haven't followed back
@@ -208,7 +209,7 @@ export async function communicate(): Promise<void> {
 
   const notificationsSection = formatNotificationsForCommunicate(notifications, actionableProfileMap);
 
-  const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + newFollowersSection + peopleSection +
+  const userContent = (agentReadme ? agentReadme + "\n\n---\n\n" : "") + "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + newFollowersSection + peopleSection +
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")\n\nOptionally add a third section:\n\n## People Updates\n(if you have new thoughts about specific people, record them here)';
 
   const response = await callSkill(systemPrompt, userContent, {
@@ -254,11 +255,18 @@ export async function communicate(): Promise<void> {
     console.log("[communicate] Updated mindset.md");
   }
 
-  // Write any people updates the model produced
+  // Append any people updates the model produced
+  const condenser = async (entries: string, header: string) => {
+    return await callSkill(
+      "Condense these timestamped observations about a person into 1-3 sentences. Preserve key facts: who they are, relationship dynamics, important topics, and notable traits. Be specific.",
+      `${header}\n\nObservations to condense:\n${entries}`,
+      { maxTokens: 256 },
+    );
+  };
   const peopleUpdates = parsePeopleUpdates(response);
-  for (const [did, content] of Object.entries(peopleUpdates)) {
-    await writePeopleFile(did, content);
-    console.log(`[communicate] Updated people file for ${did}`);
+  for (const [did, update] of Object.entries(peopleUpdates)) {
+    await appendPeopleNotes(did, update.notes, update.heading, condenser);
+    console.log(`[communicate] Appended people notes for ${did}`);
   }
 
   console.log(`[communicate] ${actions.length} actions processed`);
