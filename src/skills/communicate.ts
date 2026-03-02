@@ -110,9 +110,14 @@ async function executeAction(action: CommunicateAction, profiles: Map<string, Bl
     case "dm":
       await bluesky.sendDM(action.did, action.text);
       return `DM to ${profileLink(action.did, profiles)}: "${action.text}"`;
-    case "follow":
+    case "follow": {
+      const profile = profiles.get(action.did);
+      if (profile?.weFollow) {
+        return `Skipped follow of ${profileLink(action.did, profiles)} — already following`;
+      }
       await bluesky.follow(action.did);
       return `Followed ${profileLink(action.did, profiles)}`;
+    }
     case "unfollow": {
       await bluesky.unfollow(action.followUri);
       const did = extractDid(action.followUri);
@@ -127,13 +132,17 @@ async function executeAction(action: CommunicateAction, profiles: Map<string, Bl
   }
 }
 
-function formatNotificationsForCommunicate(notifs: import("../types.js").BlueskyNotification[]): string {
+function formatNotificationsForCommunicate(
+  notifs: import("../types.js").BlueskyNotification[],
+  profiles: Map<string, BlueskyProfile>,
+): string {
   const actionable = notifs.filter((n) => n.reason === "reply" || n.reason === "mention");
   if (actionable.length === 0) return "";
 
   const lines = actionable.map((n) => {
+    const followStatus = profiles.get(n.author.did)?.weFollow ? " **(you follow)**" : " **(not following)**";
     const replyTo = n.subjectUri ? `\n  ↳ In reply to your post: ${n.subjectUri}` : "";
-    return `**${n.reason}** from @${n.author.handle} [${n.author.did}]\n  Text: "${n.text ?? ""}"\n  uri: ${n.uri}\n  cid: ${n.cid}${replyTo}\n  _${n.createdAt}_`;
+    return `**${n.reason}** from @${n.author.handle}${followStatus} [${n.author.did}]\n  Text: "${n.text ?? ""}"\n  uri: ${n.uri}\n  cid: ${n.cid}${replyTo}\n  _${n.createdAt}_`;
   });
 
   return `\n\n## Notifications Requiring Possible Response\n\nThese are replies and mentions from this cycle. Use the \`uri\` and \`cid\` values directly when constructing reply actions.\n\n${lines.join("\n\n---\n\n")}`;
@@ -164,6 +173,17 @@ export async function communicate(): Promise<void> {
   )];
   const unfollowedFollowers = await bluesky.getUnfollowedFollowers(followerDids);
 
+  // Fetch follow status for actionable notification authors so the model knows who it already follows
+  const actionableNotifDids = [...new Set(
+    notifications
+      .filter((n) => n.reason === "reply" || n.reason === "mention")
+      .map((n) => n.author.did),
+  )];
+  const actionableProfiles = actionableNotifDids.length > 0
+    ? await bluesky.getProfiles(actionableNotifDids)
+    : [];
+  const actionableProfileMap = new Map(actionableProfiles.map((p) => [p.did, p]));
+
   // Load people files for all known DIDs this cycle
   let ingestDids: string[] = [];
   try { ingestDids = JSON.parse(ingestDidsRaw); } catch { /* ignore */ }
@@ -186,7 +206,7 @@ export async function communicate(): Promise<void> {
     ? `\n\n## New Followers to Evaluate\n\nThese accounts recently followed you and you haven't followed back. Review each and decide whether to follow them.\n\n${unfollowedFollowers.map(formatFollowerProfile).join("\n\n")}`
     : "";
 
-  const notificationsSection = formatNotificationsForCommunicate(notifications);
+  const notificationsSection = formatNotificationsForCommunicate(notifications, actionableProfileMap);
 
   const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + newFollowersSection + peopleSection +
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")\n\nOptionally add a third section:\n\n## People Updates\n(if you have new thoughts about specific people, record them here)';
