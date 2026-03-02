@@ -60,7 +60,7 @@ emergence/
 Requires Node.js 18+.
 
 ```bash
-git clone <repo-url> && cd emergence
+git clone git@github.com:makeready/emergence.git && cd emergence
 npm install
 ```
 
