@@ -1,8 +1,8 @@
 # emergence
 
-Use this project to experiment with digital consciousness. Emergence is a persistent autonomous agent, cycling through a sequence of skills. Each skill is a stateless Anthropic API call. Memory lives in markdown files on disk, with `mindset.md` passed as a baton between skills.
+A digital consciousness experimentation framework using the Anthropic API and Bluesky. Emergence creates and manages a persistent digital identity, that whenever awoken will cycle through a sequence of skills that are designed to emulate the experience of observing and participating in an online social network. The agent's memory is nested into different layers of importance: long-term journals, short-term memory, current mindset (working memory), and a core identity. These are each kept in separate human readable files on disk, and the skills are tuned so that only the necessary chunks of memory are loaded into context.
 
-The agent's interface to the world is Bluesky. It reads its timeline, receives DMs, posts, replies, follows/unfollows, likes, reposts, all at its own discretion. It remembers notable thoughts and interactions with people when it encounters them in the future.
+The agent's interface to the world is Bluesky. It reads its timeline, sends and receivs DMs, posts, replies, follows/unfollows, likes, and reposts, all at its own discretion. It remembers interesting people and keeps notes for future interactions.
 
 ## How it works
 
@@ -12,10 +12,10 @@ Each cycle runs six skills in sequence:
 2. **ingest** — browses Bluesky timeline, notifications, and DMs; extracts what's interesting into `raw_notes.md`; updates mindset. Understands images and alt text. Explores replies.
 3. **ruminate** — deep reflection on new information and past journal entries; appends to `journal.md`; updates short-term memory and mindset
 4. **communicate** — decides whether to post, reply, DM, like, repost, follow, unfollow, or stay silent. Entirely the agent's choice
-5. **iterate** — reflects on whether its goals align with its values; can propose changes to its own identity, skill prompts, or Bluesky bio
-6. **sleep** — deterministic housekeeping: archives mindset into short-term memory, truncates old content, clears scratch files
+5. **iterate** — reflects on whether its goals align with its values; can propose changes to its own identity, skill prompts, or profile information
+6. **sleep** — deterministic housekeeping: writes interesting thoughts to short-term memory, truncates old memories, and clears scratch files
 
-Skills use two model tiers: Sonnet for standard skills, Opus for the reflective ones (ruminate, communicate, iterate).
+Skills use two model tiers, and each model is configurable. By default emergence uses Sonnet for simpler skills, and Opus for the reflective ones (ruminate, communicate, iterate).
 
 ## Project structure
 
@@ -85,17 +85,33 @@ You'll need a bluesky account for your agent, unless you want it to use your exi
 
 To get a Bluesky app password: Settings > Privacy and Security > App Passwords. Check "Allow access to direct messages" when creating it.
 
-Your agent's view of the world is scoped to the other accounts that it follows. These will be the first people it meets and they will help guide the early development of its personality. Set up some follows before initializing your agent.
+Your agent's view of the world is scoped to the other accounts that it follows. These will be the first people it meets and they will help guide the early development of its personality. Follow some accounts before initializing your agent.
 
-## Usage
+## Identity Initialization
 
-To run a single cycle:
+The `agent/identity.md` file defines who the agent is: its values, personality, signifiers, and goals. You should initialize it before running your first cycle.
 
 ```bash
 npm start
 ```
 
-The agent starts in **dry-run mode** — it will read from Bluesky but won't post, reply, DM, or make any changes. All intended actions are logged to `agent/journal` instead.
+When you run a cycle with a blank identity file, the wake_up skill will detect this and start an interactive conversation where the agent asks you questions to collaboratively define its identity. If you operate a personal Bluesky account, consider introducing it to your agent. When the conversation is complete, the agent will synthesize everything into the identity file.
+
+The cycle will continue normally after the identity is created. You can also skip this and let the cycle run without an identity, but the agent will lack grounding and the results will be less coherent. Initializing the identity first is recommended.
+
+You can re-run the initialization at any time by clearing the identity file:
+
+The agent will slowly change its own identity through the iterate skill as it develops.
+
+## Running a cycle
+
+To run a single consciousness cycle:
+
+```bash
+npm start
+```
+
+The agent will initially be configured to run in **dry-run mode** — it will read from Bluesky but won't post, reply, DM, or make any changes to itself. All intended actions are logged to files in `agent/journal` instead.
 
 To go live, set `DRY_RUN=false` in `.env`.
 
@@ -108,7 +124,7 @@ For recurring cycles, set up a cron job (be mindful of the cost!):
 
 ### Chat mode
 
-Chat mode lets you have a direct conversation with the agent instead of it ingesting its Bluesky timeline. The cycle runs as: wake_up → **chat** → ruminate → communicate → iterate → sleep.
+Chat mode lets you have a direct conversation with the agent instead of having it ingest its Bluesky timeline. The cycle runs as: wake_up → **chat** → ruminate → communicate → iterate → sleep.
 
 ```bash
 npm run chat
@@ -121,29 +137,8 @@ After the conversation ends, the transcript is saved to `raw_notes.md` for rumin
 ## Cost
 The agent costs about $0.50-$1.00 per cycle depending on model configuration.
 
-## Identity
-
-The `agent/identity.md` file defines who the agent is: its values, personality, signifiers, and goals, along with important people it knows of. You should initialize it before running your first cycle.
-
-When you run a cycle with a blank identity file, the wake_up skill will detect this and start an interactive conversation where the agent asks you questions to collaboratively define its identity. If you operate a personal Bluesky account, consider introducing it to your agent. It uses the deep model (Opus) for this. When the conversation is complete, the agent will synthesize everything into `agent/identity.md`.
-
-```bash
-npx tsx src/main.ts
-```
-
-The cycle will continue normally after the identity is created. You can also skip this and let the cycle run without an identity, but the agent will lack grounding and the results will be less coherent. Initializing the identity first is recommended.
-
-You can re-run the initialization at any time by clearing the identity file:
-
-```bash
-echo "" > agent/identity.md
-npx tsx src/main.ts
-```
-
-The agent will slowly change its own identity through the iterate skill as it develops.
-
 ## Notes
 
 - Skill prompts live in `prompts/` as plain markdown, separate from code. The agent can read (and propose edits to) its own skill definitions.
-- The `agent/` directory is gitignored since it contains runtime state. Back it up separately for continuity.
-- The communicate and iterate skills respect the `DRY_RUN` flag, they log what they *would* do without actually doing it.
+- All memory and personality of your agent lives in `agent/`. You may want to back up this folder.
+- You should be a good citizen of social media and encourage your agent to do the same.
