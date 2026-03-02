@@ -1,6 +1,6 @@
 import { readAgentFile, writeAgentFile, readPromptFile } from "../lib/files.js";
 import { callSkill, type ContentBlock } from "../lib/anthropic.js";
-import { getTimeline, getDMs, getNotifications, getProfile, getPosts, markConvoRead } from "../lib/bluesky.js";
+import { getTimeline, getDMs, getNotifications, getProfile, getPosts, markConvoRead, getAuthorFeed } from "../lib/bluesky.js";
 import { CONFIG } from "../config.js";
 import type { BlueskyPost, BlueskyDM, BlueskyNotification, BlueskyProfile } from "../types.js";
 
@@ -23,6 +23,14 @@ function formatPost(p: BlueskyPost): string {
 
 function formatPosts(posts: BlueskyPost[]): string {
   return posts.map(formatPost).join("\n\n---\n\n");
+}
+
+function formatOwnReplies(posts: BlueskyPost[]): string {
+  const replies = posts.filter((p) => p.replyTo);
+  if (replies.length === 0) return "_No recent replies._";
+  return replies
+    .map((p) => `- Replied to: ${p.replyTo}\n  Your reply (${p.uri}): "${p.text.slice(0, 120)}"`)
+    .join("\n");
 }
 
 function formatDMs(dms: BlueskyDM[]): string {
@@ -188,12 +196,13 @@ export async function ingest(): Promise<void> {
   ]);
 
   // Fetch social data + own profile
-  console.log("[ingest] Fetching timeline, notifications, DMs, and own profile...");
-  const [timeline, notifications, dms, ownProfile] = await Promise.all([
+  console.log("[ingest] Fetching timeline, notifications, DMs, own profile, and own recent posts...");
+  const [timeline, notifications, dms, ownProfile, ownRecentPosts] = await Promise.all([
     getTimeline(),
     getNotifications(),
     getDMs(),
     getProfile(CONFIG.bluesky.handle),
+    getAuthorFeed(CONFIG.bluesky.handle, 50),
   ]);
 
   const imageCount = timeline.reduce(
@@ -233,6 +242,7 @@ export async function ingest(): Promise<void> {
   const textContent = [
     "## Current Mindset\n\n" + mindset,
     "## Your Profile\n\n" + formatProfile(ownProfile),
+    "## Your Recent Replies\n\nThese are posts you have already replied to. Do NOT suggest replying to them again.\n\n" + formatOwnReplies(ownRecentPosts),
     "## Timeline\n\n" + formatPosts(timeline),
     "## Notifications\n\n" + formatNotifications(notifications, subjectPosts),
     "## Direct Messages\n\n" + formatDMs(dms),

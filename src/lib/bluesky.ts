@@ -518,6 +518,7 @@ function mapPost(post: {
   likeCount?: number;
   repostCount?: number;
 }): BlueskyPost {
+  const record = post.record as { text?: string; reply?: { parent?: { uri?: string } } };
   return {
     uri: post.uri,
     cid: post.cid,
@@ -526,13 +527,14 @@ function mapPost(post: {
       displayName: post.author.displayName,
       did: post.author.did,
     },
-    text: (post.record as { text?: string }).text || "",
+    text: record.text || "",
     createdAt: post.indexedAt,
     replyCount: post.replyCount,
     likeCount: post.likeCount,
     repostCount: post.repostCount,
     images: extractImages(post.embed),
     videoAlt: extractVideoAlt(post.embed),
+    replyTo: record.reply?.parent?.uri,
   };
 }
 

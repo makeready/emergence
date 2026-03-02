@@ -52,6 +52,8 @@ export interface BlueskyPost {
   images?: BlueskyImage[];
   /** Alt text from video embeds (video content itself is ignored) */
   videoAlt?: string;
+  /** URI of the parent post if this post is a reply */
+  replyTo?: string;
 }
 
 export interface BlueskyThread {
