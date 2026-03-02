@@ -54,26 +54,58 @@ function formatNotifications(notifs: BlueskyNotification[], subjectPosts: Map<st
     .join("\n\n---\n\n");
 }
 
+type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+const ALLOWED_MEDIA_TYPES: ImageMediaType[] = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+/** Fetch an image URL and return it as a base64 content block. Returns null on failure. */
+async function fetchImageAsBase64(url: string): Promise<ContentBlock | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    const data = Buffer.from(buf).toString("base64");
+    const ct = res.headers.get("content-type") ?? "image/jpeg";
+    const mediaType: ImageMediaType = ALLOWED_MEDIA_TYPES.find((t) => ct.includes(t)) ?? "image/jpeg";
+    return { type: "image", source: { type: "base64", media_type: mediaType, data } };
+  } catch {
+    return null;
+  }
+}
+
 /** Build multimodal content blocks: text sections interleaved with thumbnail images. */
-function buildContentBlocks(
+async function buildContentBlocks(
   textContent: string,
   posts: BlueskyPost[],
   avatarUrl?: string,
-): ContentBlock[] {
+): Promise<ContentBlock[]> {
   const blocks: ContentBlock[] = [{ type: "text", text: textContent }];
+
+  const postsWithImages = posts.filter((p) => p.images && p.images.length > 0);
+
+  // Collect all image URLs to fetch in parallel
+  const urlsToFetch: string[] = [];
+  if (avatarUrl) urlsToFetch.push(avatarUrl);
+  for (const post of postsWithImages) {
+    for (const img of post.images!) {
+      urlsToFetch.push(img.thumb);
+    }
+  }
+
+  // Fetch all images in parallel
+  const fetched = await Promise.all(urlsToFetch.map(fetchImageAsBase64));
+  let idx = 0;
 
   // Include own avatar if available
   if (avatarUrl) {
-    blocks.push(
-      { type: "text", text: "\n\n## Your Profile Picture\n\nThis is your current avatar:" },
-      { type: "image", source: { type: "url", url: avatarUrl } },
-    );
+    const avatarBlock = fetched[idx++];
+    if (avatarBlock) {
+      blocks.push(
+        { type: "text", text: "\n\n## Your Profile Picture\n\nThis is your current avatar:" },
+        avatarBlock,
+      );
+    }
   }
 
-  // Collect all posts with images, tagging each image with its post context
-  const postsWithImages = posts.filter(
-    (p) => p.images && p.images.length > 0,
-  );
   if (postsWithImages.length === 0) return blocks;
 
   blocks.push({
@@ -83,14 +115,14 @@ function buildContentBlocks(
 
   for (const post of postsWithImages) {
     for (const img of post.images!) {
+      const imgBlock = fetched[idx++];
       blocks.push({
         type: "text",
         text: `\nImage from @${post.author.handle} (${post.uri}):${img.alt ? ` alt="${img.alt}"` : ""}`,
       });
-      blocks.push({
-        type: "image",
-        source: { type: "url", url: img.thumb },
-      });
+      if (imgBlock) {
+        blocks.push(imgBlock);
+      }
     }
   }
 
@@ -98,10 +130,10 @@ function buildContentBlocks(
 }
 
 /** Second pass: re-fetch specific images at full size for posts Claude flagged as unreadable. */
-function buildFullsizeBlocks(
+async function buildFullsizeBlocks(
   flaggedUris: string[],
   posts: BlueskyPost[],
-): ContentBlock[] {
+): Promise<ContentBlock[]> {
   const blocks: ContentBlock[] = [
     {
       type: "text",
@@ -109,19 +141,27 @@ function buildFullsizeBlocks(
     },
   ];
 
+  // Collect all full-size URLs to fetch in parallel
+  const jobs: { post: BlueskyPost; fullsize: string }[] = [];
   for (const uri of flaggedUris) {
     const post = posts.find((p) => p.uri === uri);
     if (!post?.images) continue;
-
     for (const img of post.images) {
-      blocks.push({
-        type: "text",
-        text: `\nFull-size image from @${post.author.handle} (${post.uri}):`,
-      });
-      blocks.push({
-        type: "image",
-        source: { type: "url", url: img.fullsize },
-      });
+      jobs.push({ post, fullsize: img.fullsize });
+    }
+  }
+
+  const fetched = await Promise.all(jobs.map((j) => fetchImageAsBase64(j.fullsize)));
+
+  for (let i = 0; i < jobs.length; i++) {
+    const { post } = jobs[i];
+    const imgBlock = fetched[i];
+    blocks.push({
+      type: "text",
+      text: `\nFull-size image from @${post.author.handle} (${post.uri}):`,
+    });
+    if (imgBlock) {
+      blocks.push(imgBlock);
     }
   }
 
@@ -193,10 +233,10 @@ export async function ingest(): Promise<void> {
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your updated mindset)\n\n## Raw Notes\n(your detailed notes)\n\nIf any images contain text you cannot read at this size, add a third section:\n\n## Unreadable Image Text\n(list the post URIs with unreadable text)',
   ].join("\n\n---\n\n");
 
-  // First pass: thumbnails
+  // First pass: thumbnails (fetched as base64 for reliable delivery to the model)
   const hasImages = imageCount > 0 || ownProfile.avatar;
   const content = hasImages
-    ? buildContentBlocks(textContent, timeline, ownProfile.avatar)
+    ? await buildContentBlocks(textContent, timeline, ownProfile.avatar)
     : textContent;
 
   let response = await callSkill(systemPrompt, content);
@@ -207,7 +247,7 @@ export async function ingest(): Promise<void> {
     console.log(
       `[ingest] Re-fetching ${flaggedUris.length} images at full size...`,
     );
-    const fullsizeBlocks = buildFullsizeBlocks(flaggedUris, timeline);
+    const fullsizeBlocks = await buildFullsizeBlocks(flaggedUris, timeline);
     const extraNotes = await callSkill(
       "You are reviewing images at higher resolution. Add any new observations to your notes.",
       fullsizeBlocks,

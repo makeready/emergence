@@ -10,9 +10,12 @@ function getClient(): Anthropic {
   return client;
 }
 
+type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
 export type ContentBlock =
   | { type: "text"; text: string }
-  | { type: "image"; source: { type: "url"; url: string } };
+  | { type: "image"; source: { type: "url"; url: string } }
+  | { type: "image"; source: { type: "base64"; media_type: ImageMediaType; data: string } };
 
 export interface CallSkillOptions {
   model?: string;
