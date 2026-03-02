@@ -9,7 +9,6 @@ import {
 import { wakeUp } from "./skills/wake-up.js";
 import { chat } from "./skills/chat.js";
 import { ruminate } from "./skills/ruminate.js";
-import { communicate } from "./skills/communicate.js";
 import { iterate } from "./skills/iterate.js";
 import { sleep } from "./skills/sleep.js";
 
@@ -17,7 +16,6 @@ const skills = [
   { name: "wake_up",   run: wakeUp },
   { name: "chat",      run: chat },
   { name: "ruminate",  run: ruminate },
-  { name: "communicate", run: communicate },
   { name: "iterate",   run: iterate },
   { name: "sleep",     run: sleep },
 ];
