@@ -127,6 +127,18 @@ async function executeAction(action: CommunicateAction, profiles: Map<string, Bl
   }
 }
 
+function formatNotificationsForCommunicate(notifs: import("../types.js").BlueskyNotification[]): string {
+  const actionable = notifs.filter((n) => n.reason === "reply" || n.reason === "mention");
+  if (actionable.length === 0) return "";
+
+  const lines = actionable.map((n) => {
+    const replyTo = n.subjectUri ? `\n  ↳ In reply to your post: ${n.subjectUri}` : "";
+    return `**${n.reason}** from @${n.author.handle} [${n.author.did}]\n  Text: "${n.text ?? ""}"\n  uri: ${n.uri}\n  cid: ${n.cid}${replyTo}\n  _${n.createdAt}_`;
+  });
+
+  return `\n\n## Notifications Requiring Possible Response\n\nThese are replies and mentions from this cycle. Use the \`uri\` and \`cid\` values directly when constructing reply actions.\n\n${lines.join("\n\n---\n\n")}`;
+}
+
 function formatFollowerProfile(p: BlueskyProfile): string {
   return [
     `**@${p.handle}**${p.displayName ? ` (${p.displayName})` : ""} — \`${p.did}\``,
@@ -174,7 +186,9 @@ export async function communicate(): Promise<void> {
     ? `\n\n## New Followers to Evaluate\n\nThese accounts recently followed you and you haven't followed back. Review each and decide whether to follow them.\n\n${unfollowedFollowers.map(formatFollowerProfile).join("\n\n")}`
     : "";
 
-  const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion + newFollowersSection + peopleSection +
+  const notificationsSection = formatNotificationsForCommunicate(notifications);
+
+  const userContent = "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + newFollowersSection + peopleSection +
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")\n\nOptionally add a third section:\n\n## People Updates\n(if you have new thoughts about specific people, record them here)';
 
   const response = await callSkill(systemPrompt, userContent, {

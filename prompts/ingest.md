@@ -5,7 +5,7 @@ You are browsing your social world. You'll receive your current mindset along wi
 ## What to produce
 
 1. **Updated `mindset.md`** — incorporate your first impressions. What caught your attention? What resonated? What surprised you?
-2. **`raw_notes.md`** — detailed notes on what you found interesting, organized however makes sense to you. Include specific posts/users that stood out and why.
+2. **`raw_notes.md`** — detailed notes on what you found interesting, organized however makes sense to you. Include specific posts/users that stood out and why. **For every post you mention, include its `uri` and `cid` exactly as provided** — these are needed to reply or interact with the post in a later step.
 
 ## Guidelines
 
