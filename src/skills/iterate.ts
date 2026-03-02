@@ -1,5 +1,7 @@
 import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readShortTermMemory } from "../lib/files.js";
-import { callSkill } from "../lib/anthropic.js";
+import { callSkill, callSkillWithTools } from "../lib/anthropic.js";
+import { listTopics, readTopicFile } from "../lib/topics.js";
+import type Anthropic from "@anthropic-ai/sdk";
 import * as bluesky from "../lib/bluesky.js";
 import type { IterateChange } from "../types.js";
 import { CONFIG } from "../config.js";
@@ -98,16 +100,53 @@ export async function iterate(): Promise<void> {
     readShortTermMemory(),
   ]);
 
-  const userContent = [
+  const topics = CONFIG.webSearch ? await listTopics() : [];
+
+  const contentParts = [
     "## Current Mindset\n\n" + mindset,
     "## Identity\n\n" + identity,
     "## Short-Term Memory\n\n" + shortTermMemory,
+  ];
+  if (CONFIG.webSearch) {
+    contentParts.push(
+      "## Topics You Have Researched\n\n" + (topics.length > 0 ? topics.join("\n") : "_None yet._"),
+    );
+  }
+  contentParts.push(
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your reflections on your own evolution)\n\n## Proposed Changes\n(any changes as JSON, or "No changes proposed.")',
-  ].join("\n\n---\n\n");
+  );
 
-  const response = await callSkill(systemPrompt, userContent, {
-    model: CONFIG.anthropic.modelDeep,
-  });
+  const userContent = contentParts.join("\n\n---\n\n");
+
+  let response: string;
+  if (CONFIG.webSearch) {
+    const tools: Anthropic.Messages.Tool[] = [
+      {
+        name: "read_topic",
+        description: "Load full research history for a topic.",
+        input_schema: {
+          type: "object" as const,
+          properties: { topic: { type: "string" } },
+          required: ["topic"],
+        },
+      },
+    ];
+
+    const toolHandler = async (name: string, input: Record<string, unknown>): Promise<string> => {
+      if (name === "read_topic") {
+        return (await readTopicFile(input.topic as string)) || "No notes found for this topic.";
+      }
+      return "";
+    };
+
+    response = await callSkillWithTools(systemPrompt, userContent, tools, toolHandler, {
+      model: CONFIG.anthropic.modelDeep,
+    });
+  } else {
+    response = await callSkill(systemPrompt, userContent, {
+      model: CONFIG.anthropic.modelDeep,
+    });
+  }
 
   // Parse and apply changes
   const changes = parseChanges(response);

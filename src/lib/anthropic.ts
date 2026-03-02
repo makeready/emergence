@@ -93,6 +93,83 @@ export async function callConversation(
   return text;
 }
 
+export async function callSkillWithTools(
+  systemPrompt: string,
+  userContent: string,
+  tools: Anthropic.Messages.Tool[],
+  toolHandler: (name: string, input: Record<string, unknown>) => Promise<string>,
+  options?: CallSkillOptions,
+): Promise<string> {
+  const model = options?.model ?? CONFIG.anthropic.model;
+  const maxTokens = options?.maxTokens ?? 4096;
+
+  const messages: Anthropic.Messages.MessageParam[] = [
+    { role: "user", content: userContent },
+  ];
+
+  console.log(`  [anthropic] Calling ${model} with tools (max ${maxTokens} tokens)...`);
+
+  for (let turn = 0; turn < 20; turn++) {
+    const response = await getClient().messages.create({
+      model,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      tools,
+      messages,
+    });
+
+    const input = response.usage.input_tokens;
+    const output = response.usage.output_tokens;
+    const pricing = PRICING[model] ?? DEFAULT_PRICING;
+    const cost = (input * pricing.input + output * pricing.output) / 1_000_000;
+    cycleUsage.inputTokens += input;
+    cycleUsage.outputTokens += output;
+    cycleUsage.cost += cost;
+    console.log(`  [anthropic] Turn ${turn + 1}: ${input} in / ${output} out ($${cost.toFixed(4)})`);
+
+    if (response.stop_reason !== "tool_use") {
+      return response.content
+        .filter((block): block is Anthropic.TextBlock => block.type === "text")
+        .map((block) => block.text)
+        .join("\n");
+    }
+
+    // Collect tool_use blocks that need client-side results
+    const toolUseBlocks = response.content.filter(
+      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+    );
+
+    const clientToolUse = toolUseBlocks.filter((b) => b.name !== "web_search");
+
+    // If no client-side tools were called, return text (server-side tools only)
+    if (clientToolUse.length === 0) {
+      return response.content
+        .filter((block): block is Anthropic.TextBlock => block.type === "text")
+        .map((block) => block.text)
+        .join("\n");
+    }
+
+    // Push assistant turn with full content
+    messages.push({
+      role: "assistant",
+      content: response.content as Anthropic.Messages.MessageParam["content"],
+    });
+
+    // Resolve client-side tools and push results
+    const toolResults: Anthropic.Messages.ToolResultBlockParam[] = await Promise.all(
+      clientToolUse.map(async (block) => ({
+        type: "tool_result" as const,
+        tool_use_id: block.id,
+        content: await toolHandler(block.name, block.input as Record<string, unknown>),
+      })),
+    );
+
+    messages.push({ role: "user", content: toolResults });
+  }
+
+  return "";
+}
+
 export async function callSkill(
   systemPrompt: string,
   userContent: string | ContentBlock[],

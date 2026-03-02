@@ -12,3 +12,5 @@ agent/.DS_Store
 agent/people/
 agent/ingest_dids.json
 agent/cycle_log.json
+agent/topics/
+agent/visited_links.json

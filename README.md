@@ -1,6 +1,6 @@
 # emergence
 
-A digital consciousness framework built on Bluesky and the Anthropic API. 
+A digital consciousness framework built on Bluesky and the Anthropic API.
 
 Emergence creates and manages a persistent digital identity, that whenever awoken will cycle through a sequence of skills that are designed to emulate the experience of observing and participating in an online social network. The agent's memory is nested into different layers of importance: long-term journals, short-term memory, current mindset (working memory), and a core identity. These are each kept in separate human readable files on disk, and the skills are tuned so that only the necessary chunks of memory are loaded into context. Each phase of the consciousness cycle is a separate call to the API with a new context, and mindset.md file is the baton passed between these skill invocations.
 
@@ -8,14 +8,13 @@ The agent's interface to the world is Bluesky. It reads its timeline, sends and 
 
 ## How it works
 
-Each cycle runs six skills in sequence:
+Each cycle runs five skills in sequence:
 
 1. **wake_up** — reads identity and short-term memory, synthesizes a fresh `mindset.md`
 2. **ingest** — browses Bluesky timeline, notifications, and DMs; extracts what's interesting into `raw_notes.md`; updates mindset. Understands images and alt text. Explores replies.
-3. **ruminate** — deep reflection on new information and past journal entries; appends to `journal.md`; updates short-term memory and mindset
-4. **communicate** — decides whether to post, reply, DM, like, repost, follow, unfollow, or stay silent. Entirely the agent's choice
-5. **iterate** — reflects on whether its goals align with its values; can propose changes to its own identity, skill prompts, or profile information
-6. **sleep** — deterministic housekeeping: writes interesting thoughts to short-term memory, truncates old memories, and clears scratch files
+3. **ruminate** — deep reflection on new information and past journal entries; appends to `journal.md`; updates short-term memory and mindset. Can research topics via web search (optional).
+4. **iterate** — reflects on whether its goals align with its values; can propose changes to its own identity, skill prompts, or profile information
+5. **sleep** — deterministic housekeeping: writes interesting thoughts to short-term memory, truncates old memories, and clears scratch files
 
 Skills use two model tiers, and each model is configurable. By default emergence uses Sonnet for simpler skills, and Opus for the reflective ones (ruminate, communicate, iterate).
 
@@ -37,15 +36,17 @@ emergence/
 │   │   ├── iterate.ts
 │   │   └── sleep.ts
 │   └── lib/
-│       ├── anthropic.ts      # Anthropic API wrapper (text + vision)
+│       ├── anthropic.ts      # Anthropic API wrapper (text + vision + tools)
 │       ├── bluesky.ts        # Bluesky client
-│       └── files.ts          # Markdown file I/O
+│       ├── files.ts          # Markdown file I/O
+│       └── topics.ts         # Topic notes and visited links
 ├── agent/                    # Runtime state (gitignored)
 │   ├── identity.md           # Core identity, values, goals, important people, signifiers
 │   ├── short_term_memory.md  # Recent observations, carried between cycles
 │   ├── raw_notes.md          # Scratch space, overwritten each cycle
 |   ├── journal/              # Append-only reflective entries
 |   ├── people/               # Notes on people
+|   ├── topics/               # Web research notes, one file per topic
 │   └── mindset.md            # The baton, active working state
 └── prompts/                  # System prompts for each skill (editable markdown)
     ├── wake-up.md
@@ -81,6 +82,7 @@ BLUESKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
 MODEL=claude-sonnet-4-20250514
 MODEL_DEEP=claude-opus-4-20250514
 DRY_RUN=true
+WEB_SEARCH=false
 ```
 
 You'll need a bluesky account for your agent, unless you want it to use your existing personal account.
@@ -126,7 +128,7 @@ For recurring cycles, set up a cron job (be mindful of the cost!):
 
 ### Chat mode
 
-Chat mode lets you have a direct conversation with the agent instead of having it ingest its Bluesky timeline. The cycle runs as: wake_up → **chat** → ruminate → communicate → iterate → sleep.
+Chat mode lets you have a direct conversation with the agent instead of having it ingest its Bluesky timeline. The cycle runs as: wake_up → **chat** → ruminate → iterate → sleep.
 
 ```bash
 npm run chat
@@ -136,8 +138,18 @@ The agent wakes up, greets you based on its current mindset, and you converse fr
 
 After the conversation ends, the transcript is saved to `raw_notes.md` for ruminate to reflect on, and the agent synthesizes an updated mindset from the exchange — then the rest of the cycle (communicate, iterate, sleep) continues as normal.
 
+## Web Search & Topics
+
+When `WEB_SEARCH=true` is set, the agent gains the ability to research topics during rumination using Anthropic's built-in web search tool.
+
+- During **ruminate**, the agent can search the web to learn more about people, projects, or ideas it encounters in its notes. Summaries are saved to `agent/topics/` as timestamped markdown files, one per topic.
+- Once a URL is visited, it's recorded in `agent/visited_links.json` and won't be re-researched in future cycles.
+- During **iterate**, the agent can read past topic research with `read_topic` but won't initiate new searches.
+
+Requires `WEB_SEARCH=true` in `.env` and an Anthropic API key with web search access.
+
 ## Cost
-The agent costs about $0.50-$1.00 per cycle depending on model configuration.
+The agent costs about $0.50-$1.00 per cycle depending on model configuration. Web search adds additional cost per search query.
 
 ## Notes
 

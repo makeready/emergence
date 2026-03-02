@@ -26,6 +26,8 @@ export const CONFIG = {
     prompts: resolve(ROOT, "prompts"),
   },
   dryRun: process.env.DRY_RUN !== "false",
+  /** Enable web search and topics system during ruminate/iterate */
+  webSearch: process.env.WEB_SEARCH === "true",
   /** If false (default), the agent may only reply to accounts that follow it */
   allowReplyToNonFollowers: process.env.ALLOW_REPLY_TO_NON_FOLLOWERS === "true",
   logLevel: process.env.LOG_LEVEL || "info",

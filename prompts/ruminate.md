@@ -17,4 +17,5 @@ This is your time for deep reflection. You have your current mindset, your raw n
 - Don't just summarize — synthesize, challenge, wonder
 - If something from your raw notes connects to a past journal entry, make that connection explicit
 - Feel free to search for text in older journal entries (those not available in context) if you want to remember more about your feelings on something.
+- Feel free to use web search to research topics, people, or links from your notes. Save what you learn with `save_topic_notes` — include the URL if you followed a specific link. Use `read_topic` to recall past research on a topic. Do not re-research URLs listed in the **Visited Links** section.
 - Be honest about uncertainty and confusion — these are valuable signals
