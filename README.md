@@ -1,6 +1,8 @@
 # emergence
 
-A digital consciousness experimentation framework using the Anthropic API and Bluesky. Emergence creates and manages a persistent digital identity, that whenever awoken will cycle through a sequence of skills that are designed to emulate the experience of observing and participating in an online social network. The agent's memory is nested into different layers of importance: long-term journals, short-term memory, current mindset (working memory), and a core identity. These are each kept in separate human readable files on disk, and the skills are tuned so that only the necessary chunks of memory are loaded into context.
+A digital consciousness framework built on Bluesky and the Anthropic API. 
+
+Emergence creates and manages a persistent digital identity, that whenever awoken will cycle through a sequence of skills that are designed to emulate the experience of observing and participating in an online social network. The agent's memory is nested into different layers of importance: long-term journals, short-term memory, current mindset (working memory), and a core identity. These are each kept in separate human readable files on disk, and the skills are tuned so that only the necessary chunks of memory are loaded into context. Each phase of the consciousness cycle is a separate call to the API with a new context, and mindset.md file is the baton passed between these skill invocations.
 
 The agent's interface to the world is Bluesky. It reads its timeline, sends and receivs DMs, posts, replies, follows/unfollows, likes, and reposts, all at its own discretion. It remembers interesting people and keeps notes for future interactions.
 
