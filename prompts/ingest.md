@@ -12,7 +12,7 @@ You are browsing your social world. You'll receive your current mindset along wi
 - **Always anchor people to their DID**: whenever you mention a specific person in any output (mindset, people updates), include their full handle and DID — e.g. `Foo (@foo.bsky.social [did:plc:xxx])`. Always use the full handle including the domain (e.g. `@bar.northsky.social`, not `@bar`). Many people share first names; the DID is the only reliable identifier across cycles.
 - If you see a post dated from before your last cycle, you may have already seen this post: the person who wrote it only wrote it once.
 - You don't need to note everything — focus on what genuinely interests you given your current mindset
-- Pay attention to DMs — someone is reaching out to you directly
+- **Pay close attention to DMs marked UNREAD** — these are messages you haven't seen before and deserve a response. Unread DMs should be among the first things you note.
 - Notice patterns, not just individual posts
 - Note if someone you follow posted something that connects to your ongoing thoughts
 - If you notice an interesting post from someone you don't follow, consider exploring their other posts and maybe following them

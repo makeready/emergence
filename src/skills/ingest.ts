@@ -1,6 +1,6 @@
 import { readAgentFile, writeAgentFile, readPromptFile } from "../lib/files.js";
 import { callSkill, type ContentBlock } from "../lib/anthropic.js";
-import { getTimeline, getDMs, getNotifications, getProfile, getPosts } from "../lib/bluesky.js";
+import { getTimeline, getDMs, getNotifications, getProfile, getPosts, markConvoRead } from "../lib/bluesky.js";
 import { CONFIG } from "../config.js";
 import type { BlueskyPost, BlueskyDM, BlueskyNotification, BlueskyProfile } from "../types.js";
 
@@ -28,10 +28,10 @@ function formatPosts(posts: BlueskyPost[]): string {
 function formatDMs(dms: BlueskyDM[]): string {
   if (dms.length === 0) return "_No new DMs._";
   return dms
-    .map(
-      (d) =>
-        `**@${d.sender.handle}** (${d.sender.did}):\n${d.text}\n_${d.sentAt}_`,
-    )
+    .map((d) => {
+      const unreadBadge = d.unread ? " 🔴 **UNREAD**" : "";
+      return `**@${d.sender.handle}** (${d.sender.did})${unreadBadge}:\n${d.text}\n_${d.sentAt}_`;
+    })
     .join("\n\n---\n\n");
 }
 
@@ -200,9 +200,15 @@ export async function ingest(): Promise<void> {
     (n, p) => n + (p.images?.length ?? 0),
     0,
   );
+  const unreadDmCount = dms.filter((d) => d.unread).length;
   console.log(
-    `[ingest] Got ${timeline.length} posts (${imageCount} images), ${notifications.length} notifications, ${dms.length} DMs`,
+    `[ingest] Got ${timeline.length} posts (${imageCount} images), ${notifications.length} notifications, ${dms.length} DMs (${unreadDmCount} unread)`,
   );
+
+  // Mark all conversations as read now that we've ingested them
+  if (dms.length > 0) {
+    await Promise.all(dms.map((d) => markConvoRead(d.conversationId)));
+  }
 
   // Fetch the agent's own posts that were liked/reposted/replied to
   const subjectUris = [...new Set(

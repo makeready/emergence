@@ -66,6 +66,7 @@ export interface BlueskyDM {
   sender: { handle: string; did: string };
   text: string;
   sentAt: string;
+  unread: boolean;
 }
 
 export interface BlueskyNotification {

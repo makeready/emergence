@@ -193,6 +193,7 @@ export async function getDMs(): Promise<BlueskyDM[]> {
           },
           text: convo.lastMessage.text || "",
           sentAt: convo.lastMessage.sentAt || "",
+          unread: (convo.unreadCount ?? 0) > 0,
         });
       }
     }
@@ -200,6 +201,20 @@ export async function getDMs(): Promise<BlueskyDM[]> {
   } catch (err) {
     console.log(`  [bluesky] DM fetch failed: ${err}`);
     return [];
+  }
+}
+
+export async function markConvoRead(convoId: string): Promise<void> {
+  const bsky = await login();
+  try {
+    await bsky.api.call(
+      "chat.bsky.convo.updateRead",
+      {},
+      { convoId },
+      CHAT_PROXY_HEADER,
+    );
+  } catch (err) {
+    console.log(`  [bluesky] Failed to mark convo ${convoId} as read: ${err}`);
   }
 }
 
