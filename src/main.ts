@@ -1,5 +1,4 @@
 import { CONFIG, validateConfig } from "./config.js";
-import { readAgentFile } from "./lib/files.js";
 import {
   resetCycleUsage,
   getCycleUsage,
@@ -59,9 +58,7 @@ async function main(): Promise<void> {
       const usage = diffUsage(before, getCycleUsage());
       skillStats.push({ name: skill.name, usage, elapsed });
 
-      const mindset = await readAgentFile("mindset.md");
       console.log(`[${skill.name}] Done (${elapsed.toFixed(1)}s)`);
-      console.log(`--- mindset ---\n${mindset.trim()}\n---\n`);
     } catch (err) {
       const elapsed = (Date.now() - start) / 1000;
       const usage = diffUsage(before, getCycleUsage());
