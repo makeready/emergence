@@ -1,4 +1,4 @@
-import { readAgentFile, writeAgentFile, readPromptFile } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, readPromptFile, getLastCycleTime } from "../lib/files.js";
 import { callSkill, type ContentBlock } from "../lib/anthropic.js";
 import { getTimeline, getDMs, getNotifications, getProfile, getPosts, markConvoRead, getAuthorFeed } from "../lib/bluesky.js";
 import { CONFIG } from "../config.js";
@@ -198,10 +198,11 @@ function parseUnreadableUris(response: string): string[] {
 export async function ingest(): Promise<void> {
   console.log("[ingest] Starting...");
 
-  const [systemPrompt, mindset, agentReadme] = await Promise.all([
+  const [systemPrompt, mindset, agentReadme, lastCycleTime] = await Promise.all([
     readPromptFile("ingest.md"),
     readAgentFile("mindset.md"),
     readAgentFile("README.md"),
+    getLastCycleTime(),
   ]);
 
   // Fetch social data + own profile
@@ -260,10 +261,20 @@ export async function ingest(): Promise<void> {
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your updated mindset)\n\n## Raw Notes\n(your detailed notes)\n\nIf any images contain text you cannot read at this size, add a third section:\n\n## Unreadable Image Text\n(list the post URIs with unreadable text)',
   ].join("\n\n---\n\n");
 
+  // Only fetch images for posts that arrived since the last cycle
+  const newPosts = lastCycleTime
+    ? timeline.filter((p) => new Date(p.createdAt).getTime() > lastCycleTime)
+    : timeline;
+  const newImageCount = newPosts.reduce((n, p) => n + (p.images?.length ?? 0), 0);
+  const skippedImages = imageCount - newImageCount;
+  if (skippedImages > 0) {
+    console.log(`[ingest] Skipping ${skippedImages} images from already-seen posts`);
+  }
+
   // First pass: thumbnails (fetched as base64 for reliable delivery to the model)
-  const hasImages = imageCount > 0 || ownProfile.avatar;
+  const hasImages = newImageCount > 0 || ownProfile.avatar;
   const content = hasImages
-    ? await buildContentBlocks(textContent, timeline, ownProfile.avatar)
+    ? await buildContentBlocks(textContent, newPosts, ownProfile.avatar)
     : textContent;
 
   let response = await callSkill(systemPrompt, content);
@@ -274,7 +285,7 @@ export async function ingest(): Promise<void> {
     console.log(
       `[ingest] Re-fetching ${flaggedUris.length} images at full size...`,
     );
-    const fullsizeBlocks = await buildFullsizeBlocks(flaggedUris, timeline);
+    const fullsizeBlocks = await buildFullsizeBlocks(flaggedUris, newPosts);
     const extraNotes = await callSkill(
       "You are reviewing images at higher resolution. Add any new observations to your notes.",
       fullsizeBlocks,
@@ -298,10 +309,7 @@ export async function ingest(): Promise<void> {
     /## Additional Image Notes\n([\s\S]*?)$/,
   );
 
-  if (mindsetMatch) {
-    await writeAgentFile("mindset.md", mindsetMatch[1].trim());
-    console.log("[ingest] Updated mindset.md");
-  }
+  await writeAgentFile("mindset.md", mindsetMatch ? mindsetMatch[1].trim() : response);
 
   let rawNotes = notesMatch ? notesMatch[1].trim() : "";
   if (extraNotesMatch) {

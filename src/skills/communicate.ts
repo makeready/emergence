@@ -255,11 +255,16 @@ export async function communicate(): Promise<void> {
     ? `\n\n## Posts You Have Already Replied To\n\nDo NOT reply to any of these posts again.\n\n${repliedToUris.map((uri) => `- ${uri}`).join("\n")}`
     : "";
 
+  // Show recent posts so the model can vary style and avoid repetition
+  const ownPostsSection = ownRecentPosts.length > 0
+    ? `\n\n## Your Recent Posts\n\nThese are your last ${ownRecentPosts.length} posts. Review them before composing new content — avoid repeating ideas or falling into a single stylistic pattern.\n\n${ownRecentPosts.map((p) => `- "${p.text}" _(${p.createdAt})_`).join("\n")}`
+    : "";
+
   const journalSection = recentJournal.trim()
     ? `\n\n## Journal (recent entries)\n\nReview recent communication logs below — any actions marked "Skipped" were blocked by hard-coded safety checks. Adjust your behavior to satisfy these restrictions, or note in your mindset if you want to propose a change during iterate.\n\n${recentJournal}`
     : "";
 
-  const userContent = (agentReadme ? agentReadme + "\n\n---\n\n" : "") + "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + alreadyRepliedSection + journalSection + newFollowersSection + peopleSection +
+  const userContent = (agentReadme ? agentReadme + "\n\n---\n\n" : "") + "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + alreadyRepliedSection + ownPostsSection + journalSection + newFollowersSection + peopleSection +
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")\n\nOptionally add a third section:\n\n## People Updates\n(if you have new thoughts about specific people, record them here)';
 
   const response = await callSkill(systemPrompt, userContent, {
@@ -318,10 +323,7 @@ export async function communicate(): Promise<void> {
   const mindsetMatch = response.match(
     /## Updated Mindset\n([\s\S]*?)(?=## Actions|$)/,
   );
-  if (mindsetMatch) {
-    await writeAgentFile("mindset.md", mindsetMatch[1].trim());
-    console.log("[communicate] Updated mindset.md");
-  }
+  await writeAgentFile("mindset.md", mindsetMatch ? mindsetMatch[1].trim() : response);
 
   // Append any people updates the model produced
   const condenser = async (entries: string, header: string) => {

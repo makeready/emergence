@@ -210,10 +210,7 @@ export async function iterate(): Promise<void> {
   const mindsetMatch = response.match(
     /## Updated Mindset\n([\s\S]*?)(?=## Proposed Changes|$)/,
   );
-  if (mindsetMatch) {
-    await writeAgentFile("mindset.md", mindsetMatch[1].trim());
-    console.log("[iterate] Updated mindset.md");
-  }
+  await writeAgentFile("mindset.md", mindsetMatch ? mindsetMatch[1].trim() : response);
 
   console.log(`[iterate] ${changes.length} changes ${CONFIG.dryRun ? "proposed" : "applied"}`);
 }

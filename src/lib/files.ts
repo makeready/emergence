@@ -369,6 +369,11 @@ export async function appendCycleLog(timestamp: string): Promise<void> {
   await writeAgentFile("cycle_log.json", JSON.stringify(times));
 }
 
+export async function getLastCycleTime(): Promise<number | null> {
+  const times = await readCycleLog();
+  return times.length > 0 ? times[times.length - 1] : null;
+}
+
 async function readCycleLog(): Promise<number[]> {
   const raw = await readAgentFile("cycle_log.json");
   try {

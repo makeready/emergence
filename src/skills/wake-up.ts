@@ -153,5 +153,4 @@ export async function wakeUp(): Promise<void> {
   const mindset = await callSkill(systemPrompt, userContent);
 
   await writeAgentFile("mindset.md", mindset);
-  console.log("[wake-up] Wrote mindset.md");
 }

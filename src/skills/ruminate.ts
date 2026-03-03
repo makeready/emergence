@@ -122,10 +122,7 @@ export async function ruminate(): Promise<void> {
     /## Updated Short-Term Memory\n([\s\S]*?)(?=## People Updates|$)/,
   );
 
-  if (mindsetMatch) {
-    await writeAgentFile("mindset.md", mindsetMatch[1].trim());
-    console.log("[ruminate] Updated mindset.md");
-  }
+  await writeAgentFile("mindset.md", mindsetMatch ? mindsetMatch[1].trim() : response);
   if (journalMatch) {
     await appendToJournal("\n\n" + journalMatch[1].trim());
     console.log("[ruminate] Appended to journal");
