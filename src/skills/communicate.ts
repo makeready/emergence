@@ -91,6 +91,14 @@ async function executeAction(action: CommunicateAction, profiles: Map<string, Bl
       const rootUri = action.rootUri ?? action.postUri;
       const rootCid = action.rootCid ?? action.postCid;
       const authorDid = extractDid(action.postUri);
+      // Check if the target post is too old to reply to
+      const [targetPost] = await bluesky.getPosts([action.postUri]);
+      if (targetPost && isStale(targetPost.createdAt)) {
+        return `Skipped reply to ${profileLink(authorDid, profiles)} — post is older than 2 days`;
+      }
+      if (await bluesky.hasReplied(action.postUri)) {
+        return `Skipped reply to ${profileLink(authorDid, profiles)} — already replied to this post`;
+      }
       if (!CONFIG.allowReplyToNonFollowers) {
         const followed = await bluesky.isFollowedBy(authorDid);
         if (!followed) {
@@ -132,6 +140,12 @@ async function executeAction(action: CommunicateAction, profiles: Map<string, Bl
   }
 }
 
+const STALE_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+
+function isStale(dateStr: string): boolean {
+  return Date.now() - new Date(dateStr).getTime() > STALE_MS;
+}
+
 function formatNotificationsForCommunicate(
   notifs: import("../types.js").BlueskyNotification[],
   profiles: Map<string, BlueskyProfile>,
@@ -142,10 +156,11 @@ function formatNotificationsForCommunicate(
   const lines = actionable.map((n) => {
     const followStatus = profiles.get(n.author.did)?.weFollow ? " **(you follow)**" : " **(not following)**";
     const replyTo = n.subjectUri ? `\n  ↳ In reply to your post: ${n.subjectUri}` : "";
-    return `**${n.reason}** from @${n.author.handle}${followStatus} [${n.author.did}]\n  Text: "${n.text ?? ""}"\n  uri: ${n.uri}\n  cid: ${n.cid}${replyTo}\n  _${n.createdAt}_`;
+    const staleTag = isStale(n.createdAt) ? " ⚠️ **STALE — do not respond**" : "";
+    return `**${n.reason}** from @${n.author.handle}${followStatus} [${n.author.did}]${staleTag}\n  Text: "${n.text ?? ""}"\n  uri: ${n.uri}\n  cid: ${n.cid}${replyTo}\n  _${n.createdAt}_`;
   });
 
-  return `\n\n## Notifications Requiring Possible Response\n\nThese are replies and mentions from this cycle. Use the \`uri\` and \`cid\` values directly when constructing reply actions.\n\n${lines.join("\n\n---\n\n")}`;
+  return `\n\n## Notifications Requiring Possible Response\n\nThese are replies and mentions from this cycle. Use the \`uri\` and \`cid\` values directly when constructing reply actions. **Do not respond to notifications marked STALE** — they are older than 2 days and a reply would feel out of context.\n\n${lines.join("\n\n---\n\n")}`;
 }
 
 function formatFollowerProfile(p: BlueskyProfile): string {
@@ -159,13 +174,14 @@ function formatFollowerProfile(p: BlueskyProfile): string {
 export async function communicate(): Promise<void> {
   console.log("[communicate] Starting...");
 
-  const [systemPrompt, mindset, ownProfile, notifications, ingestDidsRaw, agentReadme] = await Promise.all([
+  const [systemPrompt, mindset, ownProfile, notifications, ingestDidsRaw, agentReadme, ownRecentPosts] = await Promise.all([
     readPromptFile("communicate.md"),
     readAgentFile("mindset.md"),
     bluesky.getProfile(CONFIG.bluesky.handle),
     bluesky.getNotifications(),
     readAgentFile("ingest_dids.json"),
     readAgentFile("README.md"),
+    bluesky.getAuthorFeed(CONFIG.bluesky.handle, 50),
   ]);
 
   // Find accounts that followed us but we haven't followed back
@@ -209,7 +225,15 @@ export async function communicate(): Promise<void> {
 
   const notificationsSection = formatNotificationsForCommunicate(notifications, actionableProfileMap);
 
-  const userContent = (agentReadme ? agentReadme + "\n\n---\n\n" : "") + "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + newFollowersSection + peopleSection +
+  // Show posts we've already replied to so the model doesn't attempt duplicate replies
+  const repliedToUris = ownRecentPosts
+    .filter((p) => p.replyTo)
+    .map((p) => p.replyTo!);
+  const alreadyRepliedSection = repliedToUris.length > 0
+    ? `\n\n## Posts You Have Already Replied To\n\nDo NOT reply to any of these posts again.\n\n${repliedToUris.map((uri) => `- ${uri}`).join("\n")}`
+    : "";
+
+  const userContent = (agentReadme ? agentReadme + "\n\n---\n\n" : "") + "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + alreadyRepliedSection + newFollowersSection + peopleSection +
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")\n\nOptionally add a third section:\n\n## People Updates\n(if you have new thoughts about specific people, record them here)';
 
   const response = await callSkill(systemPrompt, userContent, {

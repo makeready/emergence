@@ -18,7 +18,8 @@ function formatPost(p: BlueskyPost): string {
       ? `\n[${p.images.length} image(s)${p.images.some((i) => i.alt) ? ": " + p.images.map((i) => i.alt).filter(Boolean).join("; ") : ""}]`
       : "";
   const videoNote = p.videoAlt ? `\n[video: ${p.videoAlt}]` : "";
-  return `**@${p.author.handle}** (${p.author.displayName || ""}) [${p.author.did}]\n${p.text}${imageNote}${videoNote}\n_${p.createdAt}_ | replies: ${p.replyCount ?? 0} | likes: ${p.likeCount ?? 0}\nuri: ${p.uri} cid: ${p.cid}`;
+  const staleTag = isStale(p.createdAt) ? " ⚠️ **STALE**" : "";
+  return `**@${p.author.handle}** (${p.author.displayName || ""}) [${p.author.did}]${staleTag}\n${p.text}${imageNote}${videoNote}\n_${p.createdAt}_ | replies: ${p.replyCount ?? 0} | likes: ${p.likeCount ?? 0}\nuri: ${p.uri} cid: ${p.cid}`;
 }
 
 function formatPosts(posts: BlueskyPost[]): string {
@@ -43,6 +44,12 @@ function formatDMs(dms: BlueskyDM[]): string {
     .join("\n\n---\n\n");
 }
 
+const STALE_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+
+function isStale(dateStr: string): boolean {
+  return Date.now() - new Date(dateStr).getTime() > STALE_MS;
+}
+
 function formatNotifications(notifs: BlueskyNotification[], subjectPosts: Map<string, BlueskyPost>): string {
   if (notifs.length === 0) return "_No new notifications._";
   return notifs
@@ -50,14 +57,15 @@ function formatNotifications(notifs: BlueskyNotification[], subjectPosts: Map<st
       const subject = n.subjectUri ? subjectPosts.get(n.subjectUri) : undefined;
       const subjectLine = subject ? `\n↳ Your post: "${subject.text}"` : "";
       const replyLine = n.text ? `\n↳ Reply: "${n.text}"` : "";
+      const staleTag = isStale(n.createdAt) ? " ⚠️ **STALE — too old to respond to**" : "";
 
       if (n.reason === "reply") {
-        return `**reply** from @${n.author.handle} [${n.author.did}]${subject ? `\n↳ To your post: "${subject.text}"` : ""}${n.text ? `\n↳ Reply: "${n.text}"` : ""}\n_${n.createdAt}_\nuri: ${n.uri} cid: ${n.cid}`;
+        return `**reply** from @${n.author.handle} [${n.author.did}]${staleTag}${subject ? `\n↳ To your post: "${subject.text}"` : ""}${n.text ? `\n↳ Reply: "${n.text}"` : ""}\n_${n.createdAt}_\nuri: ${n.uri} cid: ${n.cid}`;
       }
       if (n.reason === "like" || n.reason === "repost") {
-        return `**${n.reason}** from @${n.author.handle} [${n.author.did}]${subjectLine}\n_${n.createdAt}_`;
+        return `**${n.reason}** from @${n.author.handle} [${n.author.did}]${staleTag}${subjectLine}\n_${n.createdAt}_`;
       }
-      return `**${n.reason}** from @${n.author.handle} [${n.author.did}]${replyLine}\n_${n.createdAt}_\nuri: ${n.uri} cid: ${n.cid}`;
+      return `**${n.reason}** from @${n.author.handle} [${n.author.did}]${staleTag}${replyLine}\n_${n.createdAt}_\nuri: ${n.uri} cid: ${n.cid}`;
     })
     .join("\n\n---\n\n");
 }

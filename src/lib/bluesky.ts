@@ -67,6 +67,19 @@ export async function getPostThread(uri: string): Promise<BlueskyThread | null> 
   }
 }
 
+/** Check whether we have already replied to a given post. */
+export async function hasReplied(postUri: string): Promise<boolean> {
+  const bsky = await login();
+  try {
+    const response = await bsky.getPostThread({ uri: postUri, depth: 1, parentHeight: 0 });
+    const thread = response.data.thread as { replies?: Array<{ post?: { author?: { did?: string } } }> };
+    const ownDid = bsky.session?.did;
+    return (thread.replies ?? []).some((r) => r.post?.author?.did === ownDid);
+  } catch {
+    return false;
+  }
+}
+
 export async function searchPosts(
   query: string,
   limit = 25,
