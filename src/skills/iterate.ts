@@ -1,4 +1,4 @@
-import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readShortTermMemory } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readShortTermMemory, readRecentJournal } from "../lib/files.js";
 import { callSkill, callSkillWithTools } from "../lib/anthropic.js";
 import { listTopics, readTopicFile } from "../lib/topics.js";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -93,12 +93,13 @@ async function applyChange(change: IterateChange): Promise<string> {
 export async function iterate(): Promise<void> {
   console.log("[iterate] Starting...");
 
-  const [systemPrompt, mindset, identity, shortTermMemory, agentReadme] = await Promise.all([
+  const [systemPrompt, mindset, identity, shortTermMemory, agentReadme, recentJournal] = await Promise.all([
     readPromptFile("iterate.md"),
     readAgentFile("mindset.md"),
     readAgentFile("identity.md"),
     readShortTermMemory(),
     readAgentFile("README.md"),
+    readRecentJournal(CONFIG.maxJournalContextLines),
   ]);
 
   const topics = CONFIG.webSearch ? await listTopics() : [];
@@ -110,6 +111,9 @@ export async function iterate(): Promise<void> {
     "## Identity\n\n" + identity,
     "## Short-Term Memory\n\n" + shortTermMemory,
   );
+  if (recentJournal.trim()) {
+    contentParts.push("## Journal (recent entries)\n\n" + recentJournal);
+  }
   if (CONFIG.webSearch) {
     contentParts.push(
       "## Topics You Have Researched\n\n" + (topics.length > 0 ? topics.join("\n") : "_None yet._"),

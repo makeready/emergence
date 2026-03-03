@@ -1,4 +1,4 @@
-import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readPeopleFiles, appendPeopleNotes, parsePeopleUpdates } from "../lib/files.js";
+import { readAgentFile, writeAgentFile, appendToJournal, readPromptFile, readPeopleFiles, appendPeopleNotes, parsePeopleUpdates, readRecentJournal } from "../lib/files.js";
 import { callSkill } from "../lib/anthropic.js";
 import * as bluesky from "../lib/bluesky.js";
 import type { CommunicateAction, BlueskyProfile } from "../types.js";
@@ -86,7 +86,10 @@ function checkText(text: string): string | null {
   if (FORBIDDEN_TEXT_RE.test(text)) {
     const char = text.match(FORBIDDEN_TEXT_RE)![0];
     const name = char === "—" ? "em dash" : char === ";" ? "semicolon" : "@ symbol";
-    return `Skipped — text contains ${name}: "${text}"`;
+    const reason = char === "@"
+      ? "Mentioning other users by handle in posts is considered rude — address people only when replying directly to them."
+      : `Using ${name}s is a recognizable AI writing quirk — rephrase without it.`;
+    return `Skipped — text contains ${name}. ${reason} Original text: "${text}"`;
   }
   return null;
 }
@@ -109,15 +112,15 @@ async function executeAction(action: CommunicateAction, profiles: Map<string, Bl
       // Check if the target post is too old to reply to
       const [targetPost] = await bluesky.getPosts([action.postUri]);
       if (targetPost && isStale(targetPost.createdAt)) {
-        return `Skipped reply to ${profileLink(authorDid, profiles)} — post is older than 2 days`;
+        return `Skipped reply to ${profileLink(authorDid, profiles)} — post is older than 2 days. Replying to stale posts feels out of context and is blocked automatically.`;
       }
       if (await bluesky.hasReplied(action.postUri)) {
-        return `Skipped reply to ${profileLink(authorDid, profiles)} — already replied to this post`;
+        return `Skipped reply to ${profileLink(authorDid, profiles)} — already replied to this post. Duplicate replies are blocked automatically.`;
       }
       if (!CONFIG.allowReplyToNonFollowers) {
         const followed = await bluesky.isFollowedBy(authorDid);
         if (!followed) {
-          return `Skipped reply to ${profileLink(authorDid, profiles)} — author does not follow us`;
+          return `Skipped reply to ${profileLink(authorDid, profiles)} — author does not follow us. Replying to non-followers is disabled by the allowReplyToNonFollowers setting.`;
         }
       }
       const result = await bluesky.reply(
@@ -139,7 +142,7 @@ async function executeAction(action: CommunicateAction, profiles: Map<string, Bl
     case "follow": {
       const profile = profiles.get(action.did);
       if (profile?.weFollow) {
-        return `Skipped follow of ${profileLink(action.did, profiles)} — already following`;
+        return `Skipped follow of ${profileLink(action.did, profiles)} — already following. Check existing follow status before issuing follow actions.`;
       }
       await bluesky.follow(action.did);
       return `Followed ${profileLink(action.did, profiles)}`;
@@ -192,7 +195,7 @@ function formatFollowerProfile(p: BlueskyProfile): string {
 export async function communicate(): Promise<void> {
   console.log("[communicate] Starting...");
 
-  const [systemPrompt, mindset, ownProfile, notifications, ingestDidsRaw, agentReadme, ownRecentPosts] = await Promise.all([
+  const [systemPrompt, mindset, ownProfile, notifications, ingestDidsRaw, agentReadme, ownRecentPosts, recentJournal] = await Promise.all([
     readPromptFile("communicate.md"),
     readAgentFile("mindset.md"),
     bluesky.getProfile(CONFIG.bluesky.handle),
@@ -200,6 +203,7 @@ export async function communicate(): Promise<void> {
     readAgentFile("ingest_dids.json"),
     readAgentFile("README.md"),
     bluesky.getAuthorFeed(CONFIG.bluesky.handle, 50),
+    readRecentJournal(CONFIG.maxJournalContextLines),
   ]);
 
   // Find accounts that followed us but we haven't followed back
@@ -251,44 +255,66 @@ export async function communicate(): Promise<void> {
     ? `\n\n## Posts You Have Already Replied To\n\nDo NOT reply to any of these posts again.\n\n${repliedToUris.map((uri) => `- ${uri}`).join("\n")}`
     : "";
 
-  const userContent = (agentReadme ? agentReadme + "\n\n---\n\n" : "") + "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + alreadyRepliedSection + newFollowersSection + peopleSection +
+  const journalSection = recentJournal.trim()
+    ? `\n\n## Journal (recent entries)\n\nReview recent communication logs below — any actions marked "Skipped" were blocked by hard-coded safety checks. Adjust your behavior to satisfy these restrictions, or note in your mindset if you want to propose a change during iterate.\n\n${recentJournal}`
+    : "";
+
+  const userContent = (agentReadme ? agentReadme + "\n\n---\n\n" : "") + "## Current Mindset\n\n" + mindset + followingSuggestion + notificationsSection + alreadyRepliedSection + journalSection + newFollowersSection + peopleSection +
     '\n\n---\n\nProduce your response in two clearly labeled sections:\n\n## Updated Mindset\n(your mindset after deciding what to communicate)\n\n## Actions\n(your chosen actions as JSON, or "No actions — choosing silence.")\n\nOptionally add a third section:\n\n## People Updates\n(if you have new thoughts about specific people, record them here)';
 
   const response = await callSkill(systemPrompt, userContent, {
     model: CONFIG.anthropic.modelDeep,
   });
 
-  // Parse and execute actions
-  const actions = parseActions(response);
+  // Parse and execute actions, with retry loop for skipped actions
+  const allLogs: string[] = [];
+  let currentResponse = response;
+  const MAX_RETRIES = 2;
 
-  // Batch-fetch profiles for all target accounts so log entries include names
-  const targetDids = collectTargetDids(actions);
-  const targetProfiles = targetDids.length > 0 ? await bluesky.getProfiles(targetDids) : [];
-  const profileMap = new Map(targetProfiles.map((p) => [p.did, p]));
-
-  const actionLog: string[] = [];
-
-  for (const action of actions) {
-    try {
-      const result = await executeAction(action, profileMap);
-      actionLog.push(result);
-    } catch (err) {
-      const body = JSON.stringify(action);
-      const desc = `Failed to ${action.action}${actionTarget(action)}: ${err}\n  \`\`\`json\n  ${body}\n  \`\`\``;
-      console.error(`  [communicate] Failed to ${action.action}: ${err}`);
-      actionLog.push(desc);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const actions = parseActions(currentResponse);
+    if (actions.length === 0) {
+      if (attempt === 0) allLogs.push("Chose silence — no actions taken.");
+      break;
     }
+
+    const targetDids = collectTargetDids(actions);
+    const targetProfiles = targetDids.length > 0 ? await bluesky.getProfiles(targetDids) : [];
+    const profileMap = new Map(targetProfiles.map((p) => [p.did, p]));
+
+    const roundLog: string[] = [];
+    for (const action of actions) {
+      try {
+        const result = await executeAction(action, profileMap);
+        roundLog.push(result);
+      } catch (err) {
+        const body = JSON.stringify(action);
+        const desc = `Failed to ${action.action}${actionTarget(action)}: ${err}\n  \`\`\`json\n  ${body}\n  \`\`\``;
+        console.error(`  [communicate] Failed to ${action.action}: ${err}`);
+        roundLog.push(desc);
+      }
+    }
+
+    allLogs.push(...roundLog);
+
+    // Check for skipped actions that the agent could fix by rephrasing
+    const retryable = roundLog.filter((l) => l.startsWith("Skipped — text contains"));
+    if (retryable.length === 0 || attempt === MAX_RETRIES) break;
+
+    console.log(`[communicate] ${retryable.length} action(s) skipped — asking agent to retry`);
+    const retryPrompt = `Some of your actions were blocked. Here is what happened:\n\n${retryable.map((s) => "- " + s).join("\n")}\n\nPlease rephrase and resubmit ONLY the blocked actions as a new ## Actions section. Do not resend actions that succeeded. If you cannot satisfy the restriction, output "No actions — giving up."`;
+
+    currentResponse = await callSkill(systemPrompt, retryPrompt, {
+      model: CONFIG.anthropic.modelDeep,
+      maxTokens: 1024,
+    });
   }
 
-  if (actions.length === 0) {
-    actionLog.push("Chose silence — no actions taken.");
-  }
-
-  // Log actions to journal
-  const logEntry = `\n\n### Communication Log — ${new Date().toISOString()}\n${CONFIG.dryRun ? "*(dry run)*\n" : ""}${actionLog.map((a) => "- " + a).join("\n")}`;
+  // Log all actions to journal
+  const logEntry = `\n\n### Communication Log — ${new Date().toISOString()}\n${CONFIG.dryRun ? "*(dry run)*\n" : ""}${allLogs.map((a) => "- " + a).join("\n")}`;
   await appendToJournal(logEntry);
 
-  // Update mindset
+  // Update mindset from the original response
   const mindsetMatch = response.match(
     /## Updated Mindset\n([\s\S]*?)(?=## Actions|$)/,
   );
@@ -311,5 +337,5 @@ export async function communicate(): Promise<void> {
     console.log(`[communicate] Appended people notes for ${did}`);
   }
 
-  console.log(`[communicate] ${actions.length} actions processed`);
+  console.log(`[communicate] ${allLogs.length} actions processed`);
 }
