@@ -80,14 +80,29 @@ function profileLink(did: string, profiles: Map<string, BlueskyProfile>): string
   return `[${label}](${didToWebUrl(did)})`;
 }
 
+const FORBIDDEN_TEXT_RE = /[—;@]/;
+
+function checkText(text: string): string | null {
+  if (FORBIDDEN_TEXT_RE.test(text)) {
+    const char = text.match(FORBIDDEN_TEXT_RE)![0];
+    const name = char === "—" ? "em dash" : char === ";" ? "semicolon" : "@ symbol";
+    return `Skipped — text contains ${name}: "${text}"`;
+  }
+  return null;
+}
+
 async function executeAction(action: CommunicateAction, profiles: Map<string, BlueskyProfile>): Promise<string> {
   switch (action.action) {
     case "post": {
+      const blocked = checkText(action.text);
+      if (blocked) return blocked;
       const result = await bluesky.post(action.text);
       const link = result.uri !== "dry-run" ? ` ([view post](${atUriToWebUrl(result.uri)}))` : "";
       return `Posted: "${action.text}"${link}`;
     }
     case "reply": {
+      const blockedReply = checkText(action.text);
+      if (blockedReply) return blockedReply;
       const rootUri = action.rootUri ?? action.postUri;
       const rootCid = action.rootCid ?? action.postCid;
       const authorDid = extractDid(action.postUri);
@@ -115,9 +130,12 @@ async function executeAction(action: CommunicateAction, profiles: Map<string, Bl
       const replyLink = result.uri !== "dry-run" ? ` ([view reply](${atUriToWebUrl(result.uri)}))` : "";
       return `Replied to ${profileLink(authorDid, profiles)} ([post](${atUriToWebUrl(action.postUri)})): "${action.text}"${replyLink}`;
     }
-    case "dm":
+    case "dm": {
+      const blockedDm = checkText(action.text);
+      if (blockedDm) return blockedDm;
       await bluesky.sendDM(action.did, action.text);
       return `DM to ${profileLink(action.did, profiles)}: "${action.text}"`;
+    }
     case "follow": {
       const profile = profiles.get(action.did);
       if (profile?.weFollow) {

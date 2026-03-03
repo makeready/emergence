@@ -56,6 +56,6 @@ Before executing any action, ensure it does not violate basic posting etiquette.
 - Be considerate of users who don't know you: interact with others sparingly until rapport is established
 - **Don't reply to posts you have already replied to.**
 - Don't mention the name or handle of other users except when replying to them.
-- Avoid AI typographic quirks. Don't use dashes or semicolons unless there is no other way to phrase your post.
+- Avoid AI typographic quirks. Don't use em dashes or semicolons.
 - Each post should express a unique idea: Don't repeat or paraphrase past posts you've made.
 - Only send DMs to users who follow you
